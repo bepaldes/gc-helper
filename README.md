@@ -52,8 +52,8 @@ However, manually configuring each AI coding assistant requires editing fragment
 
 ### 1. Run Directly via Git
 ```bash
-git clone https://github.com/bepaldes/GC-Helper.git
-cd GC-Helper
+git clone https://github.com/bepaldes/gc-helper.git
+cd gc-helper
 node bin/gc-helper.mjs
 ```
 

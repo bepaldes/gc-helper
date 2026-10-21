@@ -52,8 +52,8 @@ O **GC-Helper** é uma ferramenta de linha de comando leve, moderna e com **zero
 
 ### 1. Executar Diretamente via Git
 ```bash
-git clone https://github.com/bepaldes/GC-Helper.git
-cd GC-Helper
+git clone https://github.com/bepaldes/gc-helper.git
+cd gc-helper
 node bin/gc-helper.mjs
 ```
 
