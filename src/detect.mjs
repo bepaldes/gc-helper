@@ -1,5 +1,5 @@
 /**
- * GhostCLI Helper — Environment & Harness Discovery Engine
+ * GC-Helper — Environment & Harness Discovery Engine
  * Scans PATH and user directories across Windows, macOS, and Linux
  * to locate installed AI coding assistants and extract existing configurations.
  */

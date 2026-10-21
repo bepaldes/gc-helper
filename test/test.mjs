@@ -1,5 +1,5 @@
 /**
- * GhostCLI Helper — Automated Test Suite
+ * GC-Helper — Automated Test Suite
  * Zero-dependency unit and integration assertions.
  */
 
@@ -28,7 +28,7 @@ function assert(condition, testName) {
   }
 }
 
-console.log('--- Running GhostCLI Helper Test Suite ---\n');
+console.log('--- Running GC-Helper Test Suite ---\n');
 
 // 1. URL Normalization Tests
 console.log('[Test Suite 1: URL Normalization]');
@@ -84,7 +84,7 @@ console.log('\n[Test Suite 3: Pre-Flight Validation]');
 
 // 4. Configurator Adapters in Isolated Temp Directory
 console.log('\n[Test Suite 4: Configurator Adapters & Backups]');
-const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghostcli-test-'));
+const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-helper-test-'));
 const testUrls = normalizeUrls('https://ghostcli.cloud');
 const testKey = 'gcli_test_secret_token_12345';
 

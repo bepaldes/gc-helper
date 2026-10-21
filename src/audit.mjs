@@ -1,5 +1,5 @@
 /**
- * GhostCLI Helper — Audit & Network Verification Engine
+ * GC-Helper — Audit & Network Verification Engine
  * Validates GhostCLI API Keys, normalizes endpoint URLs, measures latency,
  * and parses remote model catalogs.
  */
@@ -47,7 +47,7 @@ export async function probeEndpoint(rawUrl, apiKey, timeoutMs = 10000) {
         'Authorization': `Bearer ${cleanKey}`,
         'x-api-key': cleanKey,
         'Accept': 'application/json',
-        'User-Agent': 'ghostcli-helper/1.0.0'
+        'User-Agent': 'gc-helper/1.0.0'
       },
       signal: AbortSignal.timeout(timeoutMs)
     });

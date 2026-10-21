@@ -1,5 +1,5 @@
 /**
- * GhostCLI Helper — Main Interactive CLI Wizard & Command Router
+ * GC-Helper — Main Interactive CLI Wizard & Command Router
  */
 
 import readline from 'node:readline/promises';
@@ -27,13 +27,13 @@ const colors = {
 
 function printBanner() {
   console.log(`
-${colors.cyan}${colors.bold}  ██████╗ ██╗  ██╗ ██████╗ ███████╗████████╗ ██████╗██╗     ██╗
- ██╔════╝ ██║  ██║██╔═══██╗██╔════╝╚══██╔══╝██╔════╝██║     ██║
- ██║  ███╗███████║██║   ██║███████╗   ██║   ██║     ██║     ██║
- ██║   ██║██╔══██║██║   ██║╚════██║   ██║   ██║     ██║     ██║
- ╚██████╔╝██║  ██║╚██████╔╝███████║   ██║   ╚██████╗███████╗██║
-  ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝   ╚═╝    ╚═════╝╚══════╝╚═╝${colors.reset}
-${colors.dim} GhostCLI Multi-Harness Auto-Configurator & Connection Auditor${colors.reset}
+${colors.cyan}${colors.bold}  ██████╗  ██████╗      ██╗  ██╗███████╗██╗     ██████╗ ███████╗██████╗ 
+ ██╔════╝ ██╔════╝      ██║  ██║██╔════╝██║     ██╔══██╗██╔════╝██╔══██╗
+ ██║  ███╗██║     █████╗███████║█████╗  ██║     ██████╔╝█████╗  ██████╔╝
+ ██║   ██║██║     ╚════╝██╔══██║██╔══╝  ██║     ██╔═══╝ ██╔══╝  ██╔══██╗
+ ╚██████╔╝╚██████╗      ██║  ██║███████╗███████╗██║     ███████╗██║  ██║
+  ╚═════╝  ╚═════╝      ╚═╝  ╚═╝╚══════╝╚══════╝╚═╝     ╚══════╝╚═╝  ╚═╝${colors.reset}
+${colors.dim} GC-Helper — Multi-Harness Auto-Configurator & Connection Auditor${colors.reset}
 ${colors.dim} (Independent community helper — not affiliated with GhostCLI official)${colors.reset}
 `);
 }
@@ -77,8 +77,9 @@ export function parseArgs(args) {
 function printHelp() {
   console.log(`
 ${colors.bold}USAGE:${colors.reset}
-  ghostcli-helper [command] [options]
-  node bin/ghostcli-helper.mjs [command] [options]
+  gc-helper [command] [options]
+  gc [command] [options]
+  node bin/gc-helper.mjs [command] [options]
 
 ${colors.dim}Note: Independent community helper — not affiliated with GhostCLI official website or developers.${colors.reset}
 
@@ -122,7 +123,7 @@ export async function runAudit(options) {
       console.log(`${colors.red}✖ Connection failed: ${probe.error}${colors.reset}`);
     }
   } else {
-    console.log(`${colors.yellow}Notice: No GhostCLI API key found in environment or tool configs. Run 'ghostcli-helper setup' to configure.${colors.reset}`);
+    console.log(`${colors.yellow}Notice: No GhostCLI API key found in environment or tool configs. Run 'gc-helper setup' to configure.${colors.reset}`);
   }
 
   console.log(`\n${colors.bold}Detected AI Coding Harnesses:${colors.reset}`);
@@ -314,7 +315,7 @@ export async function runSetup(options) {
       }
     }
 
-    console.log(`\n${colors.green}${colors.bold}✔ GhostCLI Setup Completed Successfully!${colors.reset}`);
+    console.log(`\n${colors.green}${colors.bold}✔ GC-Helper Setup Completed Successfully!${colors.reset}`);
     console.log(`${colors.dim}Restart active terminal sessions or reload your IDE to activate updated environment variables.${colors.reset}\n`);
 
   } finally {

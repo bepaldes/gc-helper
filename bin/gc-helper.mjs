@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * GhostCLI Helper — CLI Executable Entrypoint
+ * GC-Helper — CLI Executable Entrypoint
  */
 
 import { parseArgs, runSetup, runAudit } from '../src/cli.mjs';

@@ -1,6 +1,6 @@
-# GhostCLI Helper (`ghostcli-helper`)
+# GC-Helper (`gc-helper` / `gc`)
 
-> **Configurador Automático Interativo e Auditor de Conexão para o [GhostCLI](https://ghostcli.cloud)** compatível com Claude Code, OpenAI Codex CLI, Hermes Agent, OpenClaw, OpenCode e Oh My Pi (`omp`).
+> **Configurador Automático Interativo e Auditor de Conexão para Ambientes de IA** (Claude Code, OpenAI Codex CLI, Hermes Agent, OpenClaw, OpenCode e Oh My Pi `omp`) conectando ao [GhostCLI](https://ghostcli.cloud).
 
 [![Node.js Version](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-green.svg)](https://nodejs.org/)
 [![Dependências](https://img.shields.io/badge/depend%C3%AAncias-0%20(zero)-brightgreen.svg)](package.json)
@@ -15,23 +15,24 @@
 ---
 
 > [!NOTE]
-> **Ferramenta Comunitária Independente**: O `ghostcli-helper` é um utilitário de código aberto independente, desenvolvido pela comunidade para simplificar a configuração de ambientes locais. Ele **não** é afiliado, mantido, patrocinado ou endossado pelo site oficial do GhostCLI (`ghostcli.cloud`), pela GH DIGITAL LTDA ou por seus desenvolvedores. Este projeto é apenas um facilitador de configuração.
+> **Ferramenta Comunitária Independente**: O `GC-Helper` (`gc-helper`) é um utilitário de código aberto independente, desenvolvido pela comunidade para simplificar a configuração de ambientes locais. Ele **não** é afiliado, mantido, patrocinado ou endossado pelo site oficial do GhostCLI (`ghostcli.cloud`), pela GH DIGITAL LTDA ou por seus desenvolvedores. Este projeto é estritamente um facilitador de configuração independente.
 
 ---
 
-## O que é o GhostCLI Helper?
+## O que é o GC-Helper?
 
 O [GhostCLI](https://ghostcli.cloud) oferece acesso unificado e de alta capacidade aos principais modelos de ponta para programação (como `claude-opus-5-5`, `claude-sonnet-5`, `gpt-6-astra`, `z-ai/glm-5.3`) sem cobrança por token.
 
 No entanto, configurar manualmente cada assistente de IA exige editar múltiplos arquivos JSON, TOML e YAML espalhados em pastas ocultas do sistema, além de configurar variáveis de ambiente no terminal.
 
-O **GhostCLI Helper** é uma ferramenta de linha de comando leve, moderna e com **zero dependências externas**, que automatiza toda essa configuração em segundos através de um assistente interativo com backups de segurança e auditoria de conexão em tempo real.
+O **GC-Helper** é uma ferramenta de linha de comando leve, moderna e com **zero dependências externas**, que automatiza toda essa configuração em segundos através de um assistente interativo com backups de segurança e auditoria de conexão em tempo real. Oferece tanto o comando principal `gc-helper` quanto o atalho curto `gc`.
 
 ---
 
 ## Principais Recursos
 
 * 🚀 **Zero Dependências**: Desenvolvido em Node.js moderno (ESM puro). Nada de pastas `node_modules` pesadas.
+* ⚡ **Binários Duplos**: Suporte nativo tanto para `gc-helper` quanto para o atalho rápido `gc`.
 * 🔍 **Auditoria de Rede Prévia**: Testa sua chave de API (`gcli_...`) e a URL Base diretamente em `https://ghostcli.cloud/v1/models` antes de alterar qualquer arquivo. Exibe o status HTTP, latência em milissegundos e a lista de modelos ativos.
 * 🔄 **Loop de Correção Interativo**: Caso a chave ou a URL falhem na validação, o assistente permite corrigir a credencial ou ajustar o endpoint sem abortar o processo.
 * 🖥️ **Detecção Automática Multiplataforma**: Identifica automaticamente ferramentas instaladas no Windows, macOS e Linux:
@@ -43,7 +44,7 @@ O **GhostCLI Helper** é uma ferramenta de linha de comando leve, moderna e com 
   * **Oh My Pi (`omp`)** (`~/.omp/config.json`)
 * 🛡️ **Backups Não-Destrutivos**: Cria automaticamente cópias de segurança (`.bak`) antes de sobrescrever qualquer arquivo de configuração.
 * 💾 **Persistência Dupla (Arquivos + Variáveis de Ambiente)**: Por padrão, atualiza tanto os arquivos de configuração locais quanto as variáveis de ambiente persistentes do usuário (Registro do Windows `HKCU\Environment` ou arquivos `~/.zshrc` / `~/.bashrc` no macOS/Linux).
-* 🩺 **Comando de Auditoria Dedicado**: Execute `ghostcli-helper audit` a qualquer momento para verificar a saúde da conexão e inspecionar a configuração de todas as ferramentas.
+* 🩺 **Comando de Auditoria Dedicado**: Execute `gc-helper audit` (ou `gc audit`) a qualquer momento para verificar a saúde da conexão e inspecionar a configuração de todas as ferramentas.
 
 ---
 
@@ -51,32 +52,35 @@ O **GhostCLI Helper** é uma ferramenta de linha de comando leve, moderna e com 
 
 ### 1. Executar Diretamente via Git
 ```bash
-git clone https://github.com/bepaldes/ghostcli-helper.git
-cd ghostcli-helper
-node bin/ghostcli-helper.mjs
+git clone https://github.com/bepaldes/GC-Helper.git
+cd GC-Helper
+node bin/gc-helper.mjs
 ```
 
 ### 2. Opcional: Instalação Global no Terminal
 ```bash
 npm link
-# Agora você pode executar de qualquer diretório
-ghostcli-helper
+# Agora você pode executar de qualquer diretório via qualquer comando:
+gc-helper
+# ou o atalho reduzido:
+gc
 ```
 
 ---
 
 ## Passo a Passo Interativo
 
-Ao iniciar o `ghostcli-helper`, você é guiado por um assistente de 5 etapas:
+Ao iniciar o `GC-Helper`, você é guiado por um assistente interativo:
 
 ```text
-  ██████╗ ██╗  ██╗ ██████╗ ███████╗████████╗ ██████╗██╗     ██╗
- ██╔════╝ ██║  ██║██╔═══██╗██╔════╝╚══██╔══╝██╔════╝██║     ██║
- ██║  ███╗███████║██║   ██║███████╗   ██║   ██║     ██║     ██║
- ██║   ██║██╔══██║██║   ██║╚════██║   ██║   ██║     ██║     ██║
- ╚██████╔╝██║  ██║╚██████╔╝███████║   ██║   ╚██████╗███████╗██║
-  ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝   ╚═╝    ╚═════╝╚══════╝╚═╝
- GhostCLI Multi-Harness Auto-Configurator & Connection Auditor
+  ██████╗  ██████╗      ██╗  ██╗███████╗██╗     ██████╗ ███████╗██████╗ 
+ ██╔════╝ ██╔════╝      ██║  ██║██╔════╝██║     ██╔══██╗██╔════╝██╔══██╗
+ ██║  ███╗██║     █████╗███████║█████╗  ██║     ██████╔╝█████╗  ██████╔╝
+ ██║   ██║██║     ╚════╝██╔══██║██╔══╝  ██║     ██╔═══╝ ██╔══╝  ██╔══██╗
+ ╚██████╔╝╚██████╗      ██║  ██║███████╗███████╗██║     ███████╗██║  ██║
+  ╚═════╝  ╚═════╝      ╚═╝  ╚═╝╚══════╝╚══════╝╚═╝     ╚══════╝╚═╝  ╚═╝
+ GC-Helper — Multi-Harness Auto-Configurator & Connection Auditor
+ (Independent community helper — not affiliated with GhostCLI official)
 
 Passo 1: Confirmar URL Base do GhostCLI
 Informe a URL Base [padrão: https://ghostcli.cloud]: 
@@ -86,7 +90,7 @@ Chave existente encontrada (gcli_TBU...PMbE). Usar esta chave? [S/n]: s
 
 Passo 3: Validação de Conexão Prévia
 Validando token em https://ghostcli.cloud/v1/models...
-✔ Conexão verificada com sucesso! HTTP 200 OK (240ms) — 8 modelos disponíveis.
+✔ Conexão verificada com sucesso! HTTP 200 OK (270ms) — 8 modelos disponíveis.
 
 Passo 4: Detecção de Ferramentas de IA
   [✔] Claude Code CLI              (Instalado)
@@ -112,7 +116,7 @@ Passo 5: Modo de Persistência
 ✔ OpenAI Codex CLI: Atualizado C:\Users\...\.codex\config.toml
 ✔ Hermes Agent: Atualizado C:\Users\...\AppData\Local\hermes\config.yaml
 
-✔ Configuração do GhostCLI Concluída com Sucesso!
+✔ GC-Helper Setup Concluído com Sucesso!
 ```
 
 ---
@@ -123,9 +127,9 @@ Passo 5: Modo de Persistência
 
 | Subcomando | Alias | Descrição | Exemplo |
 | :--- | :--- | :--- | :--- |
-| **`setup`** | *(padrão)* | Executa o assistente de configuração interativo. | `ghostcli-helper` |
-| **`audit`** | `--audit`, `check` | Audita a saúde da conexão, latência, catálogo de modelos e status das IAs. | `ghostcli-helper audit` |
-| **`help`** | `--help`, `-h` | Exibe o manual de parâmetros no terminal. | `ghostcli-helper help` |
+| **`setup`** | *(padrão)* | Executa o assistente de configuração interativo. | `gc-helper` ou `gc` |
+| **`audit`** | `--audit`, `check` | Audita a saúde da conexão, latência, catálogo de modelos e status das IAs. | `gc-helper audit` ou `gc audit` |
+| **`help`** | `--help`, `-h` | Exibe o manual de parâmetros no terminal. | `gc-helper help` ou `gc help` |
 
 ### Parâmetros da Linha de Comando (Modo Automatizado / CI)
 
@@ -156,15 +160,15 @@ Passo 5: Modo de Persistência
 
 ## Garantia de Segurança e Privacidade
 
-* **100% Local**: O GhostCLI Helper roda estritamente na sua máquina local.
+* **100% Local**: O GC-Helper roda estritamente na sua máquina local.
 * **Zero Telemetria**: Nenhum dado, token, configuração de hardware ou métrica de uso é coletado.
-* **Comunicação Direta**: O tráfego de rede conecta-se exclusivamente ao endpoint oficial do GhostCLI para validar sua chave de API.
+* **Comunicação Direta**: O tráfego de rede conecta-se exclusivamente ao endpoint de IA para validar sua chave de API.
 
 ---
 
 ## Isenção de Responsabilidade
 
-O `ghostcli-helper` é um facilitador de configuração de código aberto independente criado para a comunidade de desenvolvedores. Ele não possui qualquer vínculo oficial, afiliação, manutenção, patrocínio ou endosso por parte do GhostCLI, GH DIGITAL LTDA, Anthropic, OpenAI ou Nous Research. Todos os nomes de produtos, logotipos, marcas registradas e marcas comerciais pertencem aos seus respectivos proprietários.
+`GC-Helper` (`gc-helper`) é um facilitador de configuração de código aberto independente criado para a comunidade de desenvolvedores. Ele não possui qualquer vínculo oficial, afiliação, manutenção, patrocínio ou endosso por parte do GhostCLI, GH DIGITAL LTDA, Anthropic, OpenAI ou Nous Research. Todos os nomes de produtos, logotipos, marcas registradas e marcas comerciais pertencem aos seus respectivos proprietários.
 
 ---
 

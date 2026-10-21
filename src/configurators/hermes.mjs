@@ -17,7 +17,7 @@ export function configureHermes(configPath, urls, apiKey, dryRun = false) {
 
   // Update or append Hermes provider config
   const ghostBlock = `
-# GhostCLI Provider configuration added by ghostcli-helper
+# GhostCLI Provider configuration added by gc-helper
 default: "ghostcli/claude-opus-5-5"
 model: "claude-opus-5-5"
 

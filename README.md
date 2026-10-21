@@ -1,6 +1,6 @@
-# GhostCLI Helper (`ghostcli-helper`)
+# GC-Helper (`gc-helper` / `gc`)
 
-> **Interactive Auto-Configurator & Connection Auditor for [GhostCLI](https://ghostcli.cloud)** across Claude Code, OpenAI Codex CLI, Hermes Agent, OpenClaw, OpenCode, and Oh My Pi (`omp`).
+> **Interactive Auto-Configurator & Connection Auditor for AI Coding Harnesses** (Claude Code, OpenAI Codex CLI, Hermes Agent, OpenClaw, OpenCode, and Oh My Pi `omp`) connecting to [GhostCLI](https://ghostcli.cloud).
 
 [![Node.js Version](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-green.svg)](https://nodejs.org/)
 [![Dependencies](https://img.shields.io/badge/dependencies-0%20(zero)-brightgreen.svg)](package.json)
@@ -15,23 +15,24 @@
 ---
 
 > [!NOTE]
-> **Independent Community Tool**: `ghostcli-helper` is an independent, community-driven open-source utility designed to simplify local environment configuration. It is **not** affiliated with, maintained, sponsored, or endorsed by the official GhostCLI website (`ghostcli.cloud`), GH DIGITAL LTDA, or its developers. This project is solely a configuration helper.
+> **Independent Community Tool**: `GC-Helper` (`gc-helper`) is an independent, community-driven open-source utility designed to simplify local environment configuration. It is **not** affiliated with, maintained, sponsored, or endorsed by the official GhostCLI website (`ghostcli.cloud`), GH DIGITAL LTDA, or its developers. This project is solely an independent configuration helper.
 
 ---
 
-## What is GhostCLI Helper?
+## What is GC-Helper?
 
 [GhostCLI](https://ghostcli.cloud) provides unified, high-usage access to frontier coding models (such as `claude-opus-5-5`, `claude-sonnet-5`, `gpt-6-astra`, `z-ai/glm-5.3`) without per-token billing.
 
 However, manually configuring each AI coding assistant requires editing fragmented JSON, TOML, and YAML files across different hidden directories, in addition to exporting shell environment variables.
 
-**GhostCLI Helper** is a lightweight, zero-dependency CLI utility that automates this entire setup in seconds with interactive guidance, safety backups, and live connection auditing.
+**GC-Helper** is a lightweight, zero-dependency CLI utility that automates this entire setup in seconds with interactive guidance, safety backups, and live connection auditing. It provides both `gc-helper` and shorthand `gc` executable binaries.
 
 ---
 
 ## Key Features
 
 * 🚀 **Zero Dependencies**: Pure modern Node.js (ESM). No bloated `node_modules` required.
+* ⚡ **Dual CLI Binaries**: Provides both full `gc-helper` and convenient `gc` commands.
 * 🔍 **Pre-Flight Network Audit**: Tests your API key (`gcli_...`) and Base URL against `https://ghostcli.cloud/v1/models` live before touching any files. Reports HTTP status, response latency, and available model counts.
 * 🔄 **Interactive Retry Loop**: If a token or URL fails validation, cleanly prompts to re-enter credentials or adjust the endpoint.
 * 🖥️ **Cross-Platform Auto-Detection**: Automatically detects installed AI coding harnesses across Windows, macOS, and Linux:
@@ -43,7 +44,7 @@ However, manually configuring each AI coding assistant requires editing fragment
   * **Oh My Pi (`omp`)** (`~/.omp/config.json`)
 * 🛡️ **Non-Destructive Backups**: Automatically creates `.bak` safety backups before updating any configuration file.
 * 💾 **Dual Persistence (Config + Environment)**: By default, updates both tool-specific configuration files AND system-wide user environment variables (Windows User Registry `HKCU\Environment` or macOS/Linux `~/.zshrc` / `~/.bashrc`).
-* 🩺 **Standalone Audit Command**: Run `ghostcli-helper audit` at any time to verify connection health and inspect all harness configurations.
+* 🩺 **Standalone Audit Command**: Run `gc-helper audit` (or `gc audit`) at any time to verify connection health and inspect all harness configurations.
 
 ---
 
@@ -51,32 +52,35 @@ However, manually configuring each AI coding assistant requires editing fragment
 
 ### 1. Run Directly via Git
 ```bash
-git clone https://github.com/bepaldes/ghostcli-helper.git
-cd ghostcli-helper
-node bin/ghostcli-helper.mjs
+git clone https://github.com/bepaldes/GC-Helper.git
+cd GC-Helper
+node bin/gc-helper.mjs
 ```
 
 ### 2. Optional: Install Globally
 ```bash
 npm link
-# Now you can run it from any terminal
-ghostcli-helper
+# Now you can run it from any terminal via either command:
+gc-helper
+# or shorthand alias:
+gc
 ```
 
 ---
 
 ## Interactive Walkthrough
 
-When you launch `ghostcli-helper`, you are guided through a 5-step wizard:
+When you launch `GC-Helper`, you are guided through an interactive wizard:
 
 ```text
-  ██████╗ ██╗  ██╗ ██████╗ ███████╗████████╗ ██████╗██╗     ██╗
- ██╔════╝ ██║  ██║██╔═══██╗██╔════╝╚══██╔══╝██╔════╝██║     ██║
- ██║  ███╗███████║██║   ██║███████╗   ██║   ██║     ██║     ██║
- ██║   ██║██╔══██║██║   ██║╚════██║   ██║   ██║     ██║     ██║
- ╚██████╔╝██║  ██║╚██████╔╝███████║   ██║   ╚██████╗███████╗██║
-  ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝   ╚═╝    ╚═════╝╚══════╝╚═╝
- GhostCLI Multi-Harness Auto-Configurator & Connection Auditor
+  ██████╗  ██████╗      ██╗  ██╗███████╗██╗     ██████╗ ███████╗██████╗ 
+ ██╔════╝ ██╔════╝      ██║  ██║██╔════╝██║     ██╔══██╗██╔════╝██╔══██╗
+ ██║  ███╗██║     █████╗███████║█████╗  ██║     ██████╔╝█████╗  ██████╔╝
+ ██║   ██║██║     ╚════╝██╔══██║██╔══╝  ██║     ██╔═══╝ ██╔══╝  ██╔══██╗
+ ╚██████╔╝╚██████╗      ██║  ██║███████╗███████╗██║     ███████╗██║  ██║
+  ╚═════╝  ╚═════╝      ╚═╝  ╚═╝╚══════╝╚══════╝╚═╝     ╚══════╝╚═╝  ╚═╝
+ GC-Helper — Multi-Harness Auto-Configurator & Connection Auditor
+ (Independent community helper — not affiliated with GhostCLI official)
 
 Step 1: Confirm GhostCLI Base URL
 Enter Base URL [default: https://ghostcli.cloud]: 
@@ -86,7 +90,7 @@ Found existing API key (gcli_TBU...PMbE). Use this key? [Y/n]: y
 
 Step 3: Pre-Flight Connection Validation
 Validating token against https://ghostcli.cloud/v1/models...
-✔ Connection verified! HTTP 200 OK (240ms) — 8 models available.
+✔ Connection verified! HTTP 200 OK (270ms) — 8 models available.
 
 Step 4: AI Harness Detection
   [✔] Claude Code CLI              (Installed)
@@ -112,7 +116,7 @@ Step 5: Persistence Mode
 ✔ OpenAI Codex CLI: Updated C:\Users\...\.codex\config.toml
 ✔ Hermes Agent: Updated C:\Users\...\AppData\Local\hermes\config.yaml
 
-✔ GhostCLI Setup Completed Successfully!
+✔ GC-Helper Setup Completed Successfully!
 ```
 
 ---
@@ -123,15 +127,15 @@ Step 5: Persistence Mode
 
 | Subcommand | Alias | Description | Example |
 | :--- | :--- | :--- | :--- |
-| **`setup`** | *(default)* | Runs the interactive setup wizard. | `ghostcli-helper` |
-| **`audit`** | `--audit`, `check` | Audits connection health, latency, model catalogs, and harness status. | `ghostcli-helper audit` |
-| **`help`** | `--help`, `-h` | Displays the terminal parameter reference. | `ghostcli-helper help` |
+| **`setup`** | *(default)* | Runs the interactive setup wizard. | `gc-helper` or `gc` |
+| **`audit`** | `--audit`, `check` | Audits connection health, latency, model catalogs, and harness status. | `gc-helper audit` or `gc audit` |
+| **`help`** | `--help`, `-h` | Displays the terminal parameter reference. | `gc-helper help` or `gc help` |
 
 ### CLI Options (Headless / Automation)
 
 | Flag | Type | Default | Description |
 | :--- | :---: | :---: | :--- |
-| **`--url <url>`** | String | `https://ghostcli.cloud` | Custom GhostCLI Base URL. |
+| **`--url <url>`** | String | `https://ghostcli.cloud` | Custom Base URL. |
 | **`--key <key>`** | String | Auto-detected | GhostCLI API key (`gcli_...`). |
 | **`--mode <mode>`** | String | `both` | Persistence target: `both`, `config` (files only), or `env` (environment only). |
 | **`--tools <list>`** | String | Auto | Comma-separated list: `claude`, `codex`, `hermes`, `openclaw`, `opencode`, `omp`, or `all`. |
@@ -156,15 +160,15 @@ Step 5: Persistence Mode
 
 ## Security & Privacy Guarantee
 
-* **100% Local**: GhostCLI Helper runs strictly on your local machine.
+* **100% Local**: GC-Helper runs strictly on your local machine.
 * **Zero Telemetry**: No user data, tokens, system specs, or usage metrics are collected.
-* **Direct Communication**: Network traffic only connects directly to your specified GhostCLI endpoint to validate your API key.
+* **Direct Communication**: Network traffic only connects directly to your specified endpoint to validate your API key.
 
 ---
 
 ## Disclaimer
 
-`ghostcli-helper` is an independent open-source configuration helper created for the developer community. It is not affiliated with, maintained, sponsored, or endorsed by GhostCLI, GH DIGITAL LTDA, Anthropic, OpenAI, or Nous Research. All product names, logos, trademarks, and registered trademarks are property of their respective owners.
+`GC-Helper` (`gc-helper`) is an independent open-source configuration helper created for the developer community. It is not affiliated with, maintained, sponsored, or endorsed by GhostCLI, GH DIGITAL LTDA, Anthropic, OpenAI, or Nous Research. All product names, logos, trademarks, and registered trademarks are property of their respective owners.
 
 ---
 
