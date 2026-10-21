@@ -1,0 +1,35 @@
+{
+  "name": "ghostcli-helper",
+  "version": "1.0.0",
+  "description": "Interactive auto-configurator and connection auditor for GhostCLI across Claude Code, Codex CLI, Hermes Agent, OpenClaw, OpenCode, and OMP.",
+  "type": "module",
+  "main": "./src/cli.mjs",
+  "bin": {
+    "ghostcli-helper": "./bin/ghostcli-helper.mjs"
+  },
+  "scripts": {
+    "start": "node bin/ghostcli-helper.mjs",
+    "audit": "node bin/ghostcli-helper.mjs audit",
+    "test": "node test/test.mjs"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "ghostcli",
+    "claude-code",
+    "codex",
+    "hermes-agent",
+    "openclaw",
+    "opencode",
+    "omp",
+    "ai-agent",
+    "proxy-setup"
+  ],
+  "author": "bepaldes",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bepaldes/ghostcli-helper.git"
+  }
+}
