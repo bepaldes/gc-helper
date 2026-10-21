@@ -14,6 +14,11 @@
 
 ---
 
+> [!NOTE]
+> **Independent Community Tool**: `ghostcli-helper` is an independent, community-driven open-source utility designed to simplify local environment configuration. It is **not** affiliated with, maintained, sponsored, or endorsed by the official GhostCLI website (`ghostcli.cloud`), GH DIGITAL LTDA, or its developers. This project is solely a configuration helper.
+
+---
+
 ## What is GhostCLI Helper?
 
 [GhostCLI](https://ghostcli.cloud) provides unified, high-usage access to frontier coding models (such as `claude-opus-5-5`, `claude-sonnet-5`, `gpt-6-astra`, `z-ai/glm-5.3`) without per-token billing.
@@ -154,6 +159,12 @@ Step 5: Persistence Mode
 * **100% Local**: GhostCLI Helper runs strictly on your local machine.
 * **Zero Telemetry**: No user data, tokens, system specs, or usage metrics are collected.
 * **Direct Communication**: Network traffic only connects directly to your specified GhostCLI endpoint to validate your API key.
+
+---
+
+## Disclaimer
+
+`ghostcli-helper` is an independent open-source configuration helper created for the developer community. It is not affiliated with, maintained, sponsored, or endorsed by GhostCLI, GH DIGITAL LTDA, Anthropic, OpenAI, or Nous Research. All product names, logos, trademarks, and registered trademarks are property of their respective owners.
 
 ---
 

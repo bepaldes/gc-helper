@@ -34,6 +34,7 @@ ${colors.cyan}${colors.bold}  ██████╗ ██╗  ██╗ ██�
  ╚██████╔╝██║  ██║╚██████╔╝███████║   ██║   ╚██████╗███████╗██║
   ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝   ╚═╝    ╚═════╝╚══════╝╚═╝${colors.reset}
 ${colors.dim} GhostCLI Multi-Harness Auto-Configurator & Connection Auditor${colors.reset}
+${colors.dim} (Independent community helper — not affiliated with GhostCLI official)${colors.reset}
 `);
 }
 
@@ -78,6 +79,8 @@ function printHelp() {
 ${colors.bold}USAGE:${colors.reset}
   ghostcli-helper [command] [options]
   node bin/ghostcli-helper.mjs [command] [options]
+
+${colors.dim}Note: Independent community helper — not affiliated with GhostCLI official website or developers.${colors.reset}
 
 ${colors.bold}COMMANDS:${colors.reset}
   ${colors.green}setup${colors.reset}    Interactive configuration wizard (default)
