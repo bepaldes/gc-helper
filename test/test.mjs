@@ -97,6 +97,9 @@ try {
   assert(cData.existingProp === true, 'Claude preserves existing config properties');
   assert(cData.env.ANTHROPIC_BASE_URL === 'https://ghostcli.cloud', 'Claude ANTHROPIC_BASE_URL updated');
   assert(cData.env.ANTHROPIC_API_KEY === testKey, 'Claude ANTHROPIC_API_KEY updated');
+  assert(cData.model === 'opus', 'Claude model defaults to opus');
+  assert(cData.modelSettings['claude-sonnet-5']?.effortLevel === 'medium', 'Default claude-sonnet-5 configured');
+  assert(cData.modelSettings['claude-opus-5-5']?.effortLevel === 'medium', 'Default claude-opus-5-5 configured');
   assert(fs.existsSync(`${claudeFile}.bak`), 'Claude safety backup created');
 
   // Claude Code modelSettings sanitization
@@ -106,16 +109,26 @@ try {
     modelSettings: {
       'claude-opus-5-5': { effortLevel: 'medium' },
       'claude-sonnet-5-5': { effortLevel: 'high' },
+      'claude-fable-5-1': { effortLevel: 'xhigh' },
       'z-ai/glm-5.3': { effortLevel: 'low' },
       'glm-5.3': { effortLevel: 'low' }
     }
   }));
   configureClaude(claudeSanitizeFile, testUrls, testKey);
   const cSanitized = JSON.parse(fs.readFileSync(claudeSanitizeFile, 'utf8'));
-  assert(cSanitized.model === 'sonnet', 'Claude model claude-sonnet-5-5 normalized to sonnet');
+  assert(cSanitized.model === 'opus', 'Claude model claude-sonnet-5-5 normalized to opus');
   assert(cSanitized.modelSettings['claude-sonnet-5']?.effortLevel === 'high', 'Claude migrates claude-sonnet-5-5 to claude-sonnet-5');
   assert(!cSanitized.modelSettings['claude-sonnet-5-5'], 'Claude deletes claude-sonnet-5-5 key');
+  assert(cSanitized.modelSettings['claude-fable-5.1']?.effortLevel === 'xhigh', 'Claude normalizes claude-fable-5-1 to claude-fable-5.1');
+  assert(!cSanitized.modelSettings['claude-fable-5-1'], 'Claude deletes claude-fable-5-1 key');
   assert(!cSanitized.modelSettings['z-ai/glm-5.3'] && !cSanitized.modelSettings['glm-5.3'], 'Claude removes GLM 5.3 keys');
+
+  // Claude Code sonnet alias normalization
+  const claudeSonnetFile = path.join(tmpDir, 'claude-sonnet.json');
+  fs.writeFileSync(claudeSonnetFile, JSON.stringify({ model: 'sonnet' }));
+  configureClaude(claudeSonnetFile, testUrls, testKey);
+  const cSonnet = JSON.parse(fs.readFileSync(claudeSonnetFile, 'utf8'));
+  assert(cSonnet.model === 'opus', 'Claude model sonnet normalized to opus');
 
   // Codex CLI
   const codexFile = path.join(tmpDir, 'codex-config.toml');

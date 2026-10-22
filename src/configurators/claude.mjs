@@ -25,20 +25,43 @@ export function configureClaude(configPath, urls, apiKey, dryRun = false) {
   settings.env.CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY = '1';
   settings.env.CLAUDE_CODE_DISABLE_1M_CONTEXT = '1';
 
-  if (settings.modelSettings && typeof settings.modelSettings === 'object') {
-    if (settings.modelSettings['claude-sonnet-5-5']) {
-      settings.modelSettings['claude-sonnet-5'] = {
-        ...settings.modelSettings['claude-sonnet-5'],
-        ...settings.modelSettings['claude-sonnet-5-5']
-      };
-      delete settings.modelSettings['claude-sonnet-5-5'];
-    }
-    delete settings.modelSettings['z-ai/glm-5.3'];
-    delete settings.modelSettings['glm-5.3'];
+  if (!settings.modelSettings || typeof settings.modelSettings !== 'object') {
+    settings.modelSettings = {};
   }
 
-  if (settings.model === 'claude-sonnet-5-5') {
-    settings.model = 'sonnet';
+  if (settings.modelSettings['claude-sonnet-5-5']) {
+    settings.modelSettings['claude-sonnet-5'] = {
+      ...settings.modelSettings['claude-sonnet-5'],
+      ...settings.modelSettings['claude-sonnet-5-5']
+    };
+    delete settings.modelSettings['claude-sonnet-5-5'];
+  }
+
+  if (settings.modelSettings['claude-fable-5-1']) {
+    settings.modelSettings['claude-fable-5.1'] = {
+      ...settings.modelSettings['claude-fable-5.1'],
+      ...settings.modelSettings['claude-fable-5-1']
+    };
+    delete settings.modelSettings['claude-fable-5-1'];
+  }
+
+  delete settings.modelSettings['z-ai/glm-5.3'];
+  delete settings.modelSettings['glm-5.3'];
+
+  if (!settings.modelSettings['claude-sonnet-5']) {
+    settings.modelSettings['claude-sonnet-5'] = { effortLevel: 'medium' };
+  } else if (!settings.modelSettings['claude-sonnet-5'].effortLevel) {
+    settings.modelSettings['claude-sonnet-5'].effortLevel = 'medium';
+  }
+
+  if (!settings.modelSettings['claude-opus-5-5']) {
+    settings.modelSettings['claude-opus-5-5'] = { effortLevel: 'medium' };
+  } else if (!settings.modelSettings['claude-opus-5-5'].effortLevel) {
+    settings.modelSettings['claude-opus-5-5'].effortLevel = 'medium';
+  }
+
+  if (!settings.model || settings.model === 'claude-sonnet-5-5' || settings.model === 'sonnet') {
+    settings.model = 'opus';
   }
 
   if (!dryRun) {
