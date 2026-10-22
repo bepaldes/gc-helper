@@ -99,13 +99,75 @@ try {
   assert(cData.env.ANTHROPIC_API_KEY === testKey, 'Claude ANTHROPIC_API_KEY updated');
   assert(fs.existsSync(`${claudeFile}.bak`), 'Claude safety backup created');
 
+  // Claude Code modelSettings sanitization
+  const claudeSanitizeFile = path.join(tmpDir, 'claude-sanitize.json');
+  fs.writeFileSync(claudeSanitizeFile, JSON.stringify({
+    model: 'claude-sonnet-5-5',
+    modelSettings: {
+      'claude-opus-5-5': { effortLevel: 'medium' },
+      'claude-sonnet-5-5': { effortLevel: 'high' },
+      'z-ai/glm-5.3': { effortLevel: 'low' },
+      'glm-5.3': { effortLevel: 'low' }
+    }
+  }));
+  configureClaude(claudeSanitizeFile, testUrls, testKey);
+  const cSanitized = JSON.parse(fs.readFileSync(claudeSanitizeFile, 'utf8'));
+  assert(cSanitized.model === 'sonnet', 'Claude model claude-sonnet-5-5 normalized to sonnet');
+  assert(cSanitized.modelSettings['claude-sonnet-5']?.effortLevel === 'high', 'Claude migrates claude-sonnet-5-5 to claude-sonnet-5');
+  assert(!cSanitized.modelSettings['claude-sonnet-5-5'], 'Claude deletes claude-sonnet-5-5 key');
+  assert(!cSanitized.modelSettings['z-ai/glm-5.3'] && !cSanitized.modelSettings['glm-5.3'], 'Claude removes GLM 5.3 keys');
+
   // Codex CLI
   const codexFile = path.join(tmpDir, 'codex-config.toml');
-  fs.writeFileSync(codexFile, '# old config\nbase_url = "https://old.url"\n');
+  const initialCodexConfig = `# old config
+base_url = "https://old.url"
+
+[features]
+multi_agent = true
+
+[projects.'c:\\apps\\demo']
+trust_level = "trusted"
+`;
+  fs.writeFileSync(codexFile, initialCodexConfig);
   configureCodex(codexFile, testUrls, testKey);
   const codexContent = fs.readFileSync(codexFile, 'utf8');
-  assert(codexContent.includes('base_url = "https://ghostcli.cloud/v1"'), 'Codex base_url replaced');
-  assert(codexContent.includes('model = "gpt-6-astra"'), 'Codex default model added');
+
+  // Verify model and model_provider appear BEFORE [model_providers.ghostcli]
+  const providerIdx = codexContent.indexOf('[model_providers.ghostcli]');
+  const modelIdx = codexContent.indexOf('model = "gpt-6-astra"');
+  const providerKeyIdx = codexContent.indexOf('model_provider = "ghostcli"');
+  const catalogKeyIdx = codexContent.indexOf('model_catalog_json = ');
+
+  assert(providerIdx !== -1, 'Codex [model_providers.ghostcli] table created');
+  assert(modelIdx !== -1 && modelIdx < providerIdx, 'Codex model appears before [model_providers.ghostcli]');
+  assert(providerKeyIdx !== -1 && providerKeyIdx < providerIdx, 'Codex model_provider appears before [model_providers.ghostcli]');
+  assert(catalogKeyIdx !== -1 && catalogKeyIdx < providerIdx, 'Codex model_catalog_json appears before [model_providers.ghostcli]');
+
+  // Verify [model_providers.ghostcli] table entries
+  assert(codexContent.includes('name = "GhostCLI"'), 'Codex provider table has name = "GhostCLI"');
+  assert(codexContent.includes('base_url = "https://ghostcli.cloud/v1"'), 'Codex provider table has base_url');
+  assert(codexContent.includes('env_key = "GHOSTCLI_API_KEY"'), 'Codex provider table has env_key = "GHOSTCLI_API_KEY"');
+  assert(codexContent.includes('wire_api = "responses"'), 'Codex provider table has wire_api = "responses"');
+
+  // Verify existing custom tables are preserved
+  assert(codexContent.includes('[features]') && codexContent.includes('multi_agent = true'), 'Codex preserves [features] table');
+  assert(codexContent.includes("[projects.'c:\\apps\\demo']") && codexContent.includes('trust_level = "trusted"'), 'Codex preserves [projects] table');
+
+  // Verify catalog file creation
+  const expectedCatalog = path.join(tmpDir, 'ghostcli-models.json');
+  assert(fs.existsSync(expectedCatalog), 'Codex ghostcli-models.json created');
+  const catalogData = JSON.parse(fs.readFileSync(expectedCatalog, 'utf8'));
+  assert(Array.isArray(catalogData.models) && catalogData.models.some(m => m.slug === 'gpt-6-astra'), 'Codex catalog contains gpt-6-astra');
+  assert(!catalogData.models.some(m => m.slug === 'z-ai/glm-5.3'), 'Codex catalog excludes z-ai/glm-5.3');
+
+  // Verify preservation of existing custom model
+  const customModelFile = path.join(tmpDir, 'codex-custom.toml');
+  fs.writeFileSync(customModelFile, 'model = "custom-override"\n');
+  configureCodex(customModelFile, testUrls, testKey);
+  const customContent = fs.readFileSync(customModelFile, 'utf8');
+  assert(customContent.includes('model = "custom-override"'), 'Codex preserves existing custom model');
+  assert(!customContent.includes('model = "gpt-6-astra"'), 'Codex does not override existing model');
+
   assert(fs.existsSync(`${codexFile}.bak`), 'Codex safety backup created');
 
   // Hermes Agent

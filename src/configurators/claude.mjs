@@ -25,6 +25,22 @@ export function configureClaude(configPath, urls, apiKey, dryRun = false) {
   settings.env.CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY = '1';
   settings.env.CLAUDE_CODE_DISABLE_1M_CONTEXT = '1';
 
+  if (settings.modelSettings && typeof settings.modelSettings === 'object') {
+    if (settings.modelSettings['claude-sonnet-5-5']) {
+      settings.modelSettings['claude-sonnet-5'] = {
+        ...settings.modelSettings['claude-sonnet-5'],
+        ...settings.modelSettings['claude-sonnet-5-5']
+      };
+      delete settings.modelSettings['claude-sonnet-5-5'];
+    }
+    delete settings.modelSettings['z-ai/glm-5.3'];
+    delete settings.modelSettings['glm-5.3'];
+  }
+
+  if (settings.model === 'claude-sonnet-5-5') {
+    settings.model = 'sonnet';
+  }
+
   if (!dryRun) {
     fs.writeFileSync(configPath, JSON.stringify(settings, null, 2));
   }

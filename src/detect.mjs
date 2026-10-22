@@ -108,8 +108,15 @@ export function detectHarnesses() {
   if (codexConfigExists) {
     try {
       const content = fs.readFileSync(toolPaths.codex.config, 'utf8');
-      const match = content.match(/base_url\s*=\s*"([^"]+)"/);
-      if (match) codexEndpoint = match[1];
+      const ghostcliBlock = content.match(/\[model_providers\.ghostcli\](?:\r?\n(?!\s*\[).*)*\r?\n?/m);
+      if (ghostcliBlock) {
+        const match = ghostcliBlock[0].match(/base_url\s*=\s*["']([^"']+)["']/);
+        if (match) codexEndpoint = match[1];
+      }
+      if (!codexEndpoint) {
+        const match = content.match(/base_url\s*=\s*["']([^"']+)["']/);
+        if (match) codexEndpoint = match[1];
+      }
     } catch {}
   }
   results.codex = {
