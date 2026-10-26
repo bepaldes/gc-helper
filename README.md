@@ -43,6 +43,7 @@ However, manually configuring each AI coding assistant requires editing fragment
   * **OpenCode Interpreter / CLI** (`config.json`)
   * **Oh My Pi (`omp`)** (`~/.omp/config.json`)
   * **Visual Studio Code** (`Code/User/settings.json`)
+  * **Claude Desktop App** (`Claude/claude_desktop_config.json` & `Claude-3p/`)
 * 🛡️ **Non-Destructive Backups**: Automatically creates `.bak` safety backups before updating any configuration file.
 * 💾 **Dual Persistence (Config + Environment)**: By default, updates both tool-specific configuration files AND system-wide user environment variables (Windows User Registry `HKCU\Environment` or macOS/Linux `~/.zshrc` / `~/.bashrc`).
 * 🎛️ **Intelligent Management Hub**: Once configured, running `gc-helper` or `gc` never re-prompts for URL/API key—it presents an instant status check by default on Enter, with 1-second harness re-sync.
@@ -160,6 +161,7 @@ Step 5: Persistence Mode
 | **OpenCode** | `~/.config/opencode/config.json` | `providers.ghostcli.type = "openai"`<br>`providers.ghostcli.base_url = "https://ghostcli.cloud/v1"` |
 | **Oh My Pi (`omp`)** | `~/.omp/config.json` | `models.provider = "openai-compatible"`<br>`models.base_url = "https://ghostcli.cloud/v1"` |
 | **Visual Studio Code** | `Code/User/settings.json` | `terminal.integrated.env.<os>.ANTHROPIC_BASE_URL = "https://ghostcli.cloud"`<br>`terminal.integrated.env.<os>.OPENAI_BASE_URL = "https://ghostcli.cloud/v1"`<br>`terminal.integrated.env.<os>.GHOSTCLI_API_KEY = "gcli_..."` |
+| **Claude Desktop App** | `Claude/claude_desktop_config.json`<br>& `Claude-3p/` | `deploymentMode = "3p"`<br>`inferenceGatewayBaseUrl = "https://ghostcli.cloud"`<br>`inferenceGatewayAuthScheme = "bearer"`<br>*(Preserves existing `mcpServers`)* |
 | **System Environment** | Windows Registry (HKCU) / `~/.zshrc` / `~/.bashrc` | `ANTHROPIC_BASE_URL`<br>`OPENAI_BASE_URL`<br>`GHOSTCLI_API_KEY`<br>`ANTHROPIC_API_KEY` |
 
 ---

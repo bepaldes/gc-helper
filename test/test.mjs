@@ -16,6 +16,7 @@ import { configureOpenClaw } from '../src/configurators/openclaw.mjs';
 import { configureOpenCode } from '../src/configurators/opencode.mjs';
 import { configureOmp } from '../src/configurators/omp.mjs';
 import { configureVsCode } from '../src/configurators/vscode.mjs';
+import { configureClaudeDesktop } from '../src/configurators/desktop.mjs';
 
 let passed = 0;
 let failed = 0;
@@ -236,6 +237,42 @@ trust_level = "trusted"
   assert(fs.existsSync(freshVsFile), 'VS Code creates fresh settings.json if non-existent');
   const freshData = JSON.parse(fs.readFileSync(freshVsFile, 'utf8'));
   assert(freshData[envKey].ANTHROPIC_BASE_URL === 'https://ghostcli.cloud', 'Fresh VS Code settings contains ANTHROPIC_BASE_URL');
+
+  // Claude Desktop (3P Inference Mode & MCP Preservation)
+  const desktop1pFile = path.join(tmpDir, 'claude_desktop_config.json');
+  const desktop3pDir = path.join(tmpDir, 'Claude-3p');
+  fs.writeFileSync(desktop1pFile, JSON.stringify({
+    mcpServers: {
+      context7: { command: "npx", args: ["-y", "@upstash/context7-mcp"] }
+    }
+  }, null, 2));
+
+  const deskRes = configureClaudeDesktop(desktop1pFile, testUrls, testKey, false, desktop3pDir);
+  assert(fs.existsSync(deskRes.backup), 'Claude Desktop 1P backup created');
+
+  const desk1pData = JSON.parse(fs.readFileSync(desktop1pFile, 'utf8'));
+  assert(desk1pData.deploymentMode === '3p', 'Claude Desktop 1P deploymentMode set to 3p');
+  assert(desk1pData.mcpServers?.context7 !== undefined, 'Claude Desktop 1P mcpServers preserved');
+
+  const desk3pFile = path.join(desktop3pDir, 'claude_desktop_config.json');
+  assert(fs.existsSync(desk3pFile), 'Claude Desktop 3P config file created');
+  const desk3pData = JSON.parse(fs.readFileSync(desk3pFile, 'utf8'));
+  assert(desk3pData.deploymentMode === '3p', 'Claude Desktop 3P deploymentMode set to 3p');
+  assert(desk3pData.mcpServers?.context7 !== undefined, 'Claude Desktop 3P mcpServers preserved');
+
+  const metaFile = path.join(desktop3pDir, 'configLibrary', '_meta.json');
+  assert(fs.existsSync(metaFile), 'Claude Desktop 3P _meta.json created');
+  const metaData = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
+  assert(metaData.appliedId === '00000000-0000-4000-8000-000000000001', 'Claude Desktop 3P appliedId matches profile UUID');
+
+  const profileFile = path.join(desktop3pDir, 'configLibrary', `${metaData.appliedId}.json`);
+  assert(fs.existsSync(profileFile), 'Claude Desktop 3P UUID profile created');
+  const profileData = JSON.parse(fs.readFileSync(profileFile, 'utf8'));
+  assert(profileData.inferenceProvider === 'gateway', 'Claude Desktop 3P provider is gateway');
+  assert(profileData.inferenceGatewayBaseUrl === 'https://ghostcli.cloud', 'Claude Desktop 3P Base URL set');
+  assert(profileData.inferenceGatewayApiKey === testKey, 'Claude Desktop 3P API Key set');
+  assert(profileData.inferenceGatewayAuthScheme === 'bearer', 'Claude Desktop 3P auth scheme is bearer');
+  assert(profileData.modelDiscoveryEnabled === true, 'Claude Desktop 3P modelDiscoveryEnabled is true');
 
 } finally {
   // Cleanup tmpDir

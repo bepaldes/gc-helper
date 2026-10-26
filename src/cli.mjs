@@ -13,6 +13,7 @@ import { configureOpenClaw } from './configurators/openclaw.mjs';
 import { configureOpenCode } from './configurators/opencode.mjs';
 import { configureOmp } from './configurators/omp.mjs';
 import { configureVsCode } from './configurators/vscode.mjs';
+import { configureClaudeDesktop } from './configurators/desktop.mjs';
 import { configureEnvironmentVariables } from './env.mjs';
 
 const colors = {
@@ -104,7 +105,7 @@ ${colors.bold}OPTIONS:${colors.reset}
   ${colors.yellow}--url <url>${colors.reset}          GhostCLI Base URL [default: https://ghostcli.cloud]
   ${colors.yellow}--key <key>${colors.reset}          GhostCLI API Key (gcli_...)
   ${colors.yellow}--mode <mode>${colors.reset}        Persistence mode: ${colors.bold}both${colors.reset} (default), ${colors.bold}config${colors.reset}, or ${colors.bold}env${colors.reset}
-  ${colors.yellow}--tools <list>${colors.reset}       Comma-separated tools to configure: claude, codex, hermes, openclaw, opencode, omp, vscode, all
+  ${colors.yellow}--tools <list>${colors.reset}       Comma-separated tools to configure: claude, codex, hermes, openclaw, opencode, omp, vscode, desktop, all
   ${colors.yellow}--reconfigure, --force${colors.reset} Force re-prompting for Base URL and API Key
   ${colors.yellow}-y, --yes${colors.reset}            Non-interactive mode (use defaults without prompting)
   ${colors.yellow}--dry-run${colors.reset}            Simulate changes without writing files or environment
@@ -170,7 +171,8 @@ export function applyDeployment(selectedTools, harnesses, urls, apiKey, mode = '
       openclaw: { name: 'OpenClaw', fn: configureOpenClaw },
       opencode: { name: 'OpenCode', fn: configureOpenCode },
       omp: { name: 'Oh My Pi (omp)', fn: configureOmp },
-      vscode: { name: 'Visual Studio Code', fn: configureVsCode }
+      vscode: { name: 'Visual Studio Code', fn: configureVsCode },
+      desktop: { name: 'Claude Desktop App', fn: configureClaudeDesktop }
     };
 
     for (const tId of selectedTools) {
@@ -396,7 +398,7 @@ export async function runSetup(options = {}) {
       if (tChoice === '2') {
         selectedTools = Object.keys(harnesses);
       } else if (tChoice === '3') {
-        const custom = await rl.question(`Enter tool ids separated by comma (claude, codex, hermes, openclaw, opencode, omp, vscode): `);
+        const custom = await rl.question(`Enter tool ids separated by comma (claude, codex, hermes, openclaw, opencode, omp, vscode, desktop): `);
         selectedTools = custom.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
       }
     }

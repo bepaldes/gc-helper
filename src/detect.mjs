@@ -87,6 +87,23 @@ export function getToolPaths() {
             path.join(localAppData, 'Programs', 'Microsoft VS Code', 'Code.exe')
           ]
         : []
+    },
+    desktop: {
+      config: isWin
+        ? path.join(appData, 'Claude', 'claude_desktop_config.json')
+        : (process.platform === 'darwin'
+            ? path.join(userHome, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json')
+            : path.join(configHome, 'Claude', 'claude_desktop_config.json')),
+      dir: isWin
+        ? path.join(appData, 'Claude')
+        : (process.platform === 'darwin'
+            ? path.join(userHome, 'Library', 'Application Support', 'Claude')
+            : path.join(configHome, 'Claude')),
+      dir3p: isWin
+        ? path.join(localAppData, 'Claude-3p')
+        : (process.platform === 'darwin'
+            ? path.join(userHome, 'Library', 'Application Support', 'Claude-3p')
+            : path.join(configHome, 'Claude-3p'))
     }
   };
 }
@@ -261,6 +278,43 @@ export function detectHarnesses() {
     configPath: toolPaths.vscode.config,
     configExists: vscodeConfigExists,
     currentEndpoint: vscodeEndpoint
+  };
+
+  // 8. Claude Desktop (Official)
+  const desktop1pExists = fs.existsSync(toolPaths.desktop.config);
+  const desktop3pExists = fs.existsSync(toolPaths.desktop.dir3p);
+  const desktopDirExists = fs.existsSync(toolPaths.desktop.dir);
+  let desktopEndpoint = null;
+
+  if (desktop3pExists) {
+    try {
+      const metaPath = path.join(toolPaths.desktop.dir3p, 'configLibrary', '_meta.json');
+      if (fs.existsSync(metaPath)) {
+        const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+        const profPath = path.join(toolPaths.desktop.dir3p, 'configLibrary', `${meta.appliedId}.json`);
+        if (fs.existsSync(profPath)) {
+          const prof = JSON.parse(fs.readFileSync(profPath, 'utf8'));
+          desktopEndpoint = prof.inferenceGatewayBaseUrl || null;
+        }
+      }
+    } catch {}
+  }
+  if (!desktopEndpoint && desktop1pExists) {
+    try {
+      const cfg = JSON.parse(fs.readFileSync(toolPaths.desktop.config, 'utf8'));
+      if (cfg.deploymentMode === '3p') {
+        desktopEndpoint = 'Third-Party Inference (3P Mode)';
+      }
+    } catch {}
+  }
+
+  results.desktop = {
+    id: 'desktop',
+    name: 'Claude Desktop App',
+    installed: Boolean(desktop1pExists || desktop3pExists || desktopDirExists),
+    configPath: toolPaths.desktop.config,
+    configExists: desktop1pExists,
+    currentEndpoint: desktopEndpoint
   };
 
   return results;
