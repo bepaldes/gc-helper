@@ -5,13 +5,14 @@
 import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { normalizeUrls, probeEndpoint } from './audit.mjs';
-import { detectHarnesses, detectExistingKey } from './detect.mjs';
+import { detectHarnesses, detectExistingKey, isConfigured, detectConfiguredEndpoint } from './detect.mjs';
 import { configureClaude } from './configurators/claude.mjs';
 import { configureCodex } from './configurators/codex.mjs';
 import { configureHermes } from './configurators/hermes.mjs';
 import { configureOpenClaw } from './configurators/openclaw.mjs';
 import { configureOpenCode } from './configurators/opencode.mjs';
 import { configureOmp } from './configurators/omp.mjs';
+import { configureVsCode } from './configurators/vscode.mjs';
 import { configureEnvironmentVariables } from './env.mjs';
 
 const colors = {
@@ -47,13 +48,22 @@ export function parseArgs(args) {
     tools: null,  // array of tool ids or 'all'
     yes: false,
     dryRun: false,
-    help: false
+    help: false,
+    reconfigure: false,
+    hasArgs: args.length > 0
   };
 
   for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === 'audit' || arg === '--audit' || arg === 'check' || arg === '--check') {
+    const rawArg = args[i];
+    const arg = rawArg.toLowerCase();
+    if (arg === 'audit' || arg === '--audit' || arg === 'check' || arg === '--check' || arg === 'status' || arg === '--status') {
       options.command = 'audit';
+    } else if (arg === 'sync' || arg === '--sync') {
+      options.command = 'sync';
+    } else if (arg === 'setup' || arg === '--setup') {
+      options.command = 'setup';
+    } else if (arg === '--reconfigure' || arg === 'reconfigure' || arg === '--force' || arg === '-f') {
+      options.reconfigure = true;
     } else if (arg === 'help' || arg === '--help' || arg === '-h') {
       options.help = true;
     } else if (arg === '--url' && args[i + 1]) {
@@ -84,26 +94,30 @@ ${colors.bold}USAGE:${colors.reset}
 ${colors.dim}Note: Independent community helper — not affiliated with GhostCLI official website or developers.${colors.reset}
 
 ${colors.bold}COMMANDS:${colors.reset}
-  ${colors.green}setup${colors.reset}    Interactive configuration wizard (default)
-  ${colors.green}audit${colors.reset}    Verify active GhostCLI connection and inspect all harness configs
-  ${colors.green}help${colors.reset}     Show this manual
+  ${colors.green}setup${colors.reset}       Interactive configuration wizard (default)
+  ${colors.green}status${colors.reset}      Verify connection and inspect harness configs (alias: audit)
+  ${colors.green}sync${colors.reset}        Fast re-sync detected harnesses using existing credentials
+  ${colors.green}audit${colors.reset}       Deep ecosystem connection & model inspection
+  ${colors.green}help${colors.reset}        Show this manual
 
 ${colors.bold}OPTIONS:${colors.reset}
-  ${colors.yellow}--url <url>${colors.reset}       GhostCLI Base URL [default: https://ghostcli.cloud]
-  ${colors.yellow}--key <key>${colors.reset}       GhostCLI API Key (gcli_...)
-  ${colors.yellow}--mode <mode>${colors.reset}     Persistence mode: ${colors.bold}both${colors.reset} (default), ${colors.bold}config${colors.reset}, or ${colors.bold}env${colors.reset}
-  ${colors.yellow}--tools <list>${colors.reset}    Comma-separated tools to configure: claude, codex, hermes, openclaw, opencode, omp, all
-  ${colors.yellow}-y, --yes${colors.reset}         Non-interactive mode (use defaults without prompting)
-  ${colors.yellow}--dry-run${colors.reset}         Simulate changes without writing files or environment
+  ${colors.yellow}--url <url>${colors.reset}          GhostCLI Base URL [default: https://ghostcli.cloud]
+  ${colors.yellow}--key <key>${colors.reset}          GhostCLI API Key (gcli_...)
+  ${colors.yellow}--mode <mode>${colors.reset}        Persistence mode: ${colors.bold}both${colors.reset} (default), ${colors.bold}config${colors.reset}, or ${colors.bold}env${colors.reset}
+  ${colors.yellow}--tools <list>${colors.reset}       Comma-separated tools to configure: claude, codex, hermes, openclaw, opencode, omp, vscode, all
+  ${colors.yellow}--reconfigure, --force${colors.reset} Force re-prompting for Base URL and API Key
+  ${colors.yellow}-y, --yes${colors.reset}            Non-interactive mode (use defaults without prompting)
+  ${colors.yellow}--dry-run${colors.reset}            Simulate changes without writing files or environment
 `);
 }
 
-export async function runAudit(options) {
-  printBanner();
+export async function runAudit(options = {}) {
+  if (!options.skipBanner) printBanner();
   console.log(`${colors.bold}${colors.cyan}=== GhostCLI Ecosystem & Connection Audit ===${colors.reset}\n`);
 
   const detectedKey = options.key || detectExistingKey();
-  const detectedUrl = options.url || process.env.ANTHROPIC_BASE_URL || 'https://ghostcli.cloud';
+  const harnesses = detectHarnesses();
+  const detectedUrl = options.url || detectConfiguredEndpoint(harnesses, 'https://ghostcli.cloud');
   const urls = normalizeUrls(detectedUrl);
 
   console.log(`${colors.bold}Active Configuration Targets:${colors.reset}`);
@@ -127,7 +141,6 @@ export async function runAudit(options) {
   }
 
   console.log(`\n${colors.bold}Detected AI Coding Harnesses:${colors.reset}`);
-  const harnesses = detectHarnesses();
   for (const [id, h] of Object.entries(harnesses)) {
     const icon = h.installed ? `${colors.green}[✔]${colors.reset}` : `${colors.dim}[ ]${colors.reset}`;
     const statusText = h.installed ? `${colors.green}Detected${colors.reset}` : `${colors.dim}Not Found${colors.reset}`;
@@ -139,13 +152,136 @@ export async function runAudit(options) {
   console.log('');
 }
 
-export async function runSetup(options) {
-  printBanner();
+export function applyDeployment(selectedTools, harnesses, urls, apiKey, mode = 'both', dryRun = false) {
+  console.log(`\n${colors.bold}${colors.cyan}=== Applying Configurations ${dryRun ? '(DRY RUN)' : ''} ===${colors.reset}\n`);
 
+  if (mode === 'both' || mode === 'env') {
+    console.log(`Injecting persistent environment variables...`);
+    const envRes = configureEnvironmentVariables(urls, apiKey, dryRun);
+    console.log(`  ${colors.green}✔ Environment applied:${colors.reset} ANTHROPIC_BASE_URL, OPENAI_BASE_URL, GHOSTCLI_API_KEY`);
+    envRes.persistedTo.forEach(p => console.log(`    ${colors.dim}Saved to: ${p}${colors.reset}`));
+  }
+
+  if (mode === 'both' || mode === 'config') {
+    const toolMap = {
+      claude: { name: 'Claude Code', fn: configureClaude },
+      codex: { name: 'OpenAI Codex CLI', fn: configureCodex },
+      hermes: { name: 'Hermes Agent', fn: configureHermes },
+      openclaw: { name: 'OpenClaw', fn: configureOpenClaw },
+      opencode: { name: 'OpenCode', fn: configureOpenCode },
+      omp: { name: 'Oh My Pi (omp)', fn: configureOmp },
+      vscode: { name: 'Visual Studio Code', fn: configureVsCode }
+    };
+
+    for (const tId of selectedTools) {
+      const toolInfo = toolMap[tId];
+      const h = harnesses[tId];
+      if (toolInfo && h) {
+        try {
+          const res = toolInfo.fn(h.configPath, urls, apiKey, dryRun);
+          console.log(`  ${colors.green}✔ ${res.tool}:${colors.reset} Updated ${colors.dim}${res.path}${colors.reset}`);
+          if (res.backup) {
+            console.log(`    ${colors.dim}Backup created: ${res.backup}${colors.reset}`);
+          }
+        } catch (err) {
+          console.log(`  ${colors.red}✖ ${toolInfo.name}:${colors.reset} Failed to update (${err.message})`);
+        }
+      }
+    }
+  }
+
+  console.log(`\n${colors.green}${colors.bold}✔ GC-Helper Operation Completed Successfully!${colors.reset}`);
+  console.log(`${colors.dim}Restart active terminal sessions or reload your IDE to activate updated environment variables.${colors.reset}\n`);
+}
+
+export async function runSync(options = {}) {
+  if (!options.skipBanner) printBanner();
+  console.log(`${colors.bold}${colors.cyan}=== Fast Sync Detected AI Harnesses ===${colors.reset}\n`);
+
+  const detectedKey = options.key || detectExistingKey();
+  if (!detectedKey) {
+    console.error(`${colors.red}Error: No GhostCLI API Key found on system. Run 'gc-helper setup' first.${colors.reset}`);
+    return;
+  }
+
+  const harnesses = detectHarnesses();
+  const detectedUrl = options.url || detectConfiguredEndpoint(harnesses, 'https://ghostcli.cloud');
+  const urls = normalizeUrls(detectedUrl);
+
+  const detectedTools = Object.keys(harnesses).filter(id => harnesses[id].installed);
+  const selectedTools = options.tools
+    ? (options.tools.includes('all') ? Object.keys(harnesses) : options.tools)
+    : detectedTools;
+
+  console.log(`Target URL:       ${colors.cyan}${urls.baseUrl}${colors.reset}`);
+  const maskedKey = detectedKey.slice(0, 8) + '...' + detectedKey.slice(-4);
+  console.log(`API Key:          ${colors.green}${maskedKey}${colors.reset}`);
+  console.log(`Target Harnesses: ${colors.yellow}${selectedTools.join(', ') || 'None detected'}${colors.reset}`);
+
+  if (selectedTools.length === 0) {
+    console.log(`\n${colors.yellow}Notice: No supported AI coding harnesses detected to sync.${colors.reset}`);
+    return;
+  }
+
+  applyDeployment(selectedTools, harnesses, urls, detectedKey, options.mode || 'both', options.dryRun);
+}
+
+export async function runPostInstallMenu(options = {}) {
+  printBanner();
+  const rl = readline.createInterface({ input, output });
+
+  try {
+    console.log(`${colors.bold}${colors.cyan}=== GhostCLI Management Hub ===${colors.reset}`);
+    console.log(`GhostCLI is already configured and active across your environment.\n`);
+    console.log(`What would you like to do?`);
+    console.log(`  1. Connection & Harness Status [default]`);
+    console.log(`  2. Re-sync All Detected Harnesses`);
+    console.log(`  3. Reconfigure URL / API Key`);
+    console.log(`  4. Exit\n`);
+
+    const answer = await rl.question(`Choose an option [1-4, default: 1]: `);
+    const choice = answer.trim().toLowerCase();
+
+    if (choice === '1' || choice === '') {
+      await runAudit({ ...options, skipBanner: true });
+      return 'exit';
+    } else if (choice === '2') {
+      await runSync({ ...options, skipBanner: true });
+      return 'exit';
+    } else if (choice === '3') {
+      return 'reconfigure';
+    } else if (choice === '4' || choice === 'q' || choice === 'exit') {
+      console.log('Goodbye!');
+      return 'exit';
+    } else {
+      await runAudit({ ...options, skipBanner: true });
+      return 'exit';
+    }
+  } finally {
+    rl.close();
+  }
+}
+
+export async function runSetup(options = {}) {
   if (options.help) {
+    printBanner();
     printHelp();
     return;
   }
+
+  const harnesses = detectHarnesses();
+  const existingKey = options.key || detectExistingKey();
+  const configured = isConfigured(harnesses, existingKey);
+
+  // If already configured and user did not pass explicit subcommands or reconfigure flag:
+  if (!options.yes && !options.hasArgs && !options.reconfigure && configured) {
+    const action = await runPostInstallMenu(options);
+    if (action !== 'reconfigure') {
+      return;
+    }
+  }
+
+  printBanner();
 
   const rl = readline.createInterface({ input, output });
 
@@ -260,7 +396,7 @@ export async function runSetup(options) {
       if (tChoice === '2') {
         selectedTools = Object.keys(harnesses);
       } else if (tChoice === '3') {
-        const custom = await rl.question(`Enter tool ids separated by comma (claude, codex, hermes, openclaw, opencode, omp): `);
+        const custom = await rl.question(`Enter tool ids separated by comma (claude, codex, hermes, openclaw, opencode, omp, vscode): `);
         selectedTools = custom.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
       }
     }
@@ -279,44 +415,7 @@ export async function runSetup(options) {
     }
 
     // Step 6: Execute Configuration
-    console.log(`\n${colors.bold}${colors.cyan}=== Applying Configurations ${options.dryRun ? '(DRY RUN)' : ''} ===${colors.reset}\n`);
-
-    if (mode === 'both' || mode === 'env') {
-      console.log(`Injecting persistent environment variables...`);
-      const envRes = configureEnvironmentVariables(urls, apiKey, options.dryRun);
-      console.log(`  ${colors.green}✔ Environment applied:${colors.reset} ANTHROPIC_BASE_URL, OPENAI_BASE_URL, GHOSTCLI_API_KEY`);
-      envRes.persistedTo.forEach(p => console.log(`    ${colors.dim}Saved to: ${p}${colors.reset}`));
-    }
-
-    if (mode === 'both' || mode === 'config') {
-      const toolMap = {
-        claude: { name: 'Claude Code', fn: configureClaude },
-        codex: { name: 'OpenAI Codex CLI', fn: configureCodex },
-        hermes: { name: 'Hermes Agent', fn: configureHermes },
-        openclaw: { name: 'OpenClaw', fn: configureOpenClaw },
-        opencode: { name: 'OpenCode', fn: configureOpenCode },
-        omp: { name: 'Oh My Pi (omp)', fn: configureOmp }
-      };
-
-      for (const tId of selectedTools) {
-        const toolInfo = toolMap[tId];
-        const h = harnesses[tId];
-        if (toolInfo && h) {
-          try {
-            const res = toolInfo.fn(h.configPath, urls, apiKey, options.dryRun);
-            console.log(`  ${colors.green}✔ ${res.tool}:${colors.reset} Updated ${colors.dim}${res.path}${colors.reset}`);
-            if (res.backup) {
-              console.log(`    ${colors.dim}Backup created: ${res.backup}${colors.reset}`);
-            }
-          } catch (err) {
-            console.log(`  ${colors.red}✖ ${toolInfo.name}:${colors.reset} Failed to update (${err.message})`);
-          }
-        }
-      }
-    }
-
-    console.log(`\n${colors.green}${colors.bold}✔ GC-Helper Setup Completed Successfully!${colors.reset}`);
-    console.log(`${colors.dim}Restart active terminal sessions or reload your IDE to activate updated environment variables.${colors.reset}\n`);
+    applyDeployment(selectedTools, harnesses, urls, apiKey, mode, options.dryRun);
 
   } finally {
     rl.close();

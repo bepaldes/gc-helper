@@ -68,6 +68,25 @@ export function getToolPaths() {
     omp: {
       config: path.join(userHome, '.omp', 'config.json'),
       dir: path.join(userHome, '.omp')
+    },
+    vscode: {
+      config: isWin
+        ? path.join(appData, 'Code', 'User', 'settings.json')
+        : (process.platform === 'darwin'
+            ? path.join(userHome, 'Library', 'Application Support', 'Code', 'User', 'settings.json')
+            : path.join(configHome, 'Code', 'User', 'settings.json')),
+      dir: isWin
+        ? path.join(appData, 'Code', 'User')
+        : (process.platform === 'darwin'
+            ? path.join(userHome, 'Library', 'Application Support', 'Code', 'User')
+            : path.join(configHome, 'Code', 'User')),
+      candidateBins: isWin
+        ? [
+            path.join(localAppData, 'Programs', 'Microsoft VS Code', 'bin', 'code.cmd'),
+            path.join(localAppData, 'Programs', 'Microsoft VS Code', 'bin', 'code'),
+            path.join(localAppData, 'Programs', 'Microsoft VS Code', 'Code.exe')
+          ]
+        : []
     }
   };
 }
@@ -216,18 +235,46 @@ export function detectHarnesses() {
     currentEndpoint: ompEndpoint
   };
 
+  // 7. Visual Studio Code
+  let vscodeBin = checkBinary('code');
+  if (!vscodeBin) {
+    for (const b of toolPaths.vscode.candidateBins) {
+      if (fs.existsSync(b)) { vscodeBin = b; break; }
+    }
+  }
+  const vscodeConfigExists = fs.existsSync(toolPaths.vscode.config);
+  let vscodeEndpoint = null;
+  if (vscodeConfigExists) {
+    try {
+      const cfg = JSON.parse(fs.readFileSync(toolPaths.vscode.config, 'utf8'));
+      const envKey = isWin
+        ? 'terminal.integrated.env.windows'
+        : (process.platform === 'darwin' ? 'terminal.integrated.env.osx' : 'terminal.integrated.env.linux');
+      vscodeEndpoint = cfg[envKey]?.ANTHROPIC_BASE_URL || cfg[envKey]?.OPENAI_BASE_URL || null;
+    } catch {}
+  }
+  results.vscode = {
+    id: 'vscode',
+    name: 'Visual Studio Code',
+    installed: Boolean(vscodeBin || vscodeConfigExists || fs.existsSync(toolPaths.vscode.dir)),
+    bin: vscodeBin,
+    configPath: toolPaths.vscode.config,
+    configExists: vscodeConfigExists,
+    currentEndpoint: vscodeEndpoint
+  };
+
   return results;
 }
 
-export function detectExistingKey() {
-  if (process.env.GHOSTCLI_API_KEY && process.env.GHOSTCLI_API_KEY.trim() !== '') {
-    return process.env.GHOSTCLI_API_KEY.trim();
+export function detectExistingKey(env = process.env) {
+  if (env.GHOSTCLI_API_KEY && env.GHOSTCLI_API_KEY.trim() !== '') {
+    return env.GHOSTCLI_API_KEY.trim();
   }
-  if (process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY.startsWith('gcli_')) {
-    return process.env.ANTHROPIC_API_KEY.trim();
+  if (env.ANTHROPIC_API_KEY && env.ANTHROPIC_API_KEY.startsWith('gcli_')) {
+    return env.ANTHROPIC_API_KEY.trim();
   }
-  if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.startsWith('gcli_')) {
-    return process.env.OPENAI_API_KEY.trim();
+  if (env.OPENAI_API_KEY && env.OPENAI_API_KEY.startsWith('gcli_')) {
+    return env.OPENAI_API_KEY.trim();
   }
 
   // Check Claude Code settings.json
@@ -252,3 +299,46 @@ export function detectExistingKey() {
 
   return null;
 }
+
+/**
+ * Resolves the active GhostCLI Base URL from environment or existing harness configs.
+ */
+export function detectConfiguredEndpoint(harnesses = null, fallback = 'https://ghostcli.cloud', env = process.env) {
+  if (env.ANTHROPIC_BASE_URL && env.ANTHROPIC_BASE_URL.trim() !== '') {
+    return env.ANTHROPIC_BASE_URL.trim();
+  }
+  if (env.OPENAI_BASE_URL && env.OPENAI_BASE_URL.trim() !== '') {
+    return env.OPENAI_BASE_URL.trim();
+  }
+
+  const h = harnesses || detectHarnesses();
+  for (const info of Object.values(h)) {
+    if (info && info.currentEndpoint && typeof info.currentEndpoint === 'string' && info.currentEndpoint.startsWith('http')) {
+      return info.currentEndpoint;
+    }
+  }
+
+  return fallback;
+}
+
+/**
+ * Checks if GhostCLI is already configured on the system:
+ * - A valid GhostCLI API key is detected, OR
+ * - At least one harness has an existing active endpoint configured.
+ */
+export function isConfigured(harnesses = null, existingKey = undefined, env = process.env) {
+  const key = existingKey !== undefined ? existingKey : detectExistingKey(env);
+  if (key && typeof key === 'string' && key.trim() !== '') {
+    return true;
+  }
+
+  const h = harnesses || detectHarnesses();
+  for (const info of Object.values(h)) {
+    if (info && info.configExists && info.currentEndpoint) {
+      return true;
+    }
+  }
+
+  return false;
+}
+

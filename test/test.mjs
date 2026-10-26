@@ -8,12 +8,14 @@ import path from 'node:path';
 import os from 'node:os';
 import { normalizeUrls, probeEndpoint } from '../src/audit.mjs';
 import { parseArgs } from '../src/cli.mjs';
+import { isConfigured, detectConfiguredEndpoint } from '../src/detect.mjs';
 import { configureClaude } from '../src/configurators/claude.mjs';
 import { configureCodex } from '../src/configurators/codex.mjs';
 import { configureHermes } from '../src/configurators/hermes.mjs';
 import { configureOpenClaw } from '../src/configurators/openclaw.mjs';
 import { configureOpenCode } from '../src/configurators/opencode.mjs';
 import { configureOmp } from '../src/configurators/omp.mjs';
+import { configureVsCode } from '../src/configurators/vscode.mjs';
 
 let passed = 0;
 let failed = 0;
@@ -210,9 +212,77 @@ trust_level = "trusted"
   const ompData = JSON.parse(fs.readFileSync(ompFile, 'utf8'));
   assert(ompData.models.base_url === 'https://ghostcli.cloud/v1', 'Oh My Pi (omp) models.base_url updated');
 
+  // Visual Studio Code
+  const vscodeFile = path.join(tmpDir, 'vscode-settings.json');
+  fs.writeFileSync(vscodeFile, JSON.stringify({ "editor.tabSize": 2, "terminal.integrated.env.windows": { "EXISTING_VAR": "keep_me" } }));
+  const vsRes = configureVsCode(vscodeFile, testUrls, testKey);
+  const vsData = JSON.parse(fs.readFileSync(vscodeFile, 'utf8'));
+  const envKey = process.platform === 'win32'
+    ? 'terminal.integrated.env.windows'
+    : (process.platform === 'darwin' ? 'terminal.integrated.env.osx' : 'terminal.integrated.env.linux');
+
+  assert(vsData["editor.tabSize"] === 2, 'VS Code preserves existing editor settings');
+  if (process.platform === 'win32') {
+    assert(vsData[envKey].EXISTING_VAR === 'keep_me', 'VS Code preserves existing terminal env variables');
+  }
+  assert(vsData[envKey].ANTHROPIC_BASE_URL === 'https://ghostcli.cloud', 'VS Code terminal ANTHROPIC_BASE_URL configured');
+  assert(vsData[envKey].OPENAI_BASE_URL === 'https://ghostcli.cloud/v1', 'VS Code terminal OPENAI_BASE_URL configured');
+  assert(vsData[envKey].GHOSTCLI_API_KEY === testKey, 'VS Code terminal GHOSTCLI_API_KEY configured');
+  assert(fs.existsSync(vsRes.backup), 'VS Code backup created');
+
+  // Fresh file creation when settings.json does not exist
+  const freshVsFile = path.join(tmpDir, 'new-user', 'settings.json');
+  configureVsCode(freshVsFile, testUrls, testKey);
+  assert(fs.existsSync(freshVsFile), 'VS Code creates fresh settings.json if non-existent');
+  const freshData = JSON.parse(fs.readFileSync(freshVsFile, 'utf8'));
+  assert(freshData[envKey].ANTHROPIC_BASE_URL === 'https://ghostcli.cloud', 'Fresh VS Code settings contains ANTHROPIC_BASE_URL');
+
 } finally {
   // Cleanup tmpDir
   fs.rmSync(tmpDir, { recursive: true, force: true });
+}
+
+// 5. Configured State & Management Hub Parsing Tests
+console.log('\n[Test Suite 5: Configured Detection & Management Hub]');
+{
+  // parseArgs enhancements
+  const pEmpty = parseArgs([]);
+  assert(pEmpty.hasArgs === false, 'Empty args sets hasArgs to false');
+  assert(pEmpty.reconfigure === false, 'Default reconfigure is false');
+
+  const pStatus = parseArgs(['status']);
+  assert(pStatus.command === 'audit', 'Subcommand status maps to audit');
+  assert(pStatus.hasArgs === true, 'status sets hasArgs to true');
+
+  const pSync = parseArgs(['sync']);
+  assert(pSync.command === 'sync', 'Subcommand sync parsed');
+
+  const pReconf = parseArgs(['setup', '--reconfigure']);
+  assert(pReconf.reconfigure === true, '--reconfigure flag sets reconfigure true');
+
+  const pForce = parseArgs(['--force']);
+  assert(pForce.reconfigure === true, '--force flag sets reconfigure true');
+
+  // isConfigured detection logic
+  const mockHarnessesEmpty = {
+    claude: { installed: false, configExists: false, currentEndpoint: null },
+    codex: { installed: false, configExists: false, currentEndpoint: null }
+  };
+  assert(isConfigured(mockHarnessesEmpty, null) === false, 'isConfigured is false when key is null and no endpoints exist');
+  assert(isConfigured(mockHarnessesEmpty, 'gcli_test123') === true, 'isConfigured is true when valid key exists');
+
+  const mockHarnessesWithClaude = {
+    claude: { installed: true, configExists: true, currentEndpoint: 'https://ghostcli.cloud' },
+    codex: { installed: false, configExists: false, currentEndpoint: null }
+  };
+  assert(isConfigured(mockHarnessesWithClaude, null) === true, 'isConfigured is true when harness has configured endpoint even without explicit key');
+
+  // detectConfiguredEndpoint
+  const resolvedUrl = detectConfiguredEndpoint(mockHarnessesWithClaude, 'https://default.url', {});
+  assert(resolvedUrl === 'https://ghostcli.cloud', 'detectConfiguredEndpoint extracts endpoint from harness config');
+
+  const fallbackUrl = detectConfiguredEndpoint(mockHarnessesEmpty, 'https://default.url', {});
+  assert(fallbackUrl === 'https://default.url', 'detectConfiguredEndpoint falls back when none configured');
 }
 
 console.log(`\n---------------------------------------`);

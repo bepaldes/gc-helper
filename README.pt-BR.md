@@ -42,9 +42,11 @@ O **GC-Helper** é uma ferramenta de linha de comando leve, moderna e com **zero
   * **OpenClaw** (`~/.openclaw/openclaw.json`)
   * **OpenCode Interpreter / CLI** (`config.json`)
   * **Oh My Pi (`omp`)** (`~/.omp/config.json`)
+  * **Visual Studio Code** (`Code/User/settings.json`)
 * 🛡️ **Backups Não-Destrutivos**: Cria automaticamente cópias de segurança (`.bak`) antes de sobrescrever qualquer arquivo de configuração.
 * 💾 **Persistência Dupla (Arquivos + Variáveis de Ambiente)**: Por padrão, atualiza tanto os arquivos de configuração locais quanto as variáveis de ambiente persistentes do usuário (Registro do Windows `HKCU\Environment` ou arquivos `~/.zshrc` / `~/.bashrc` no macOS/Linux).
-* 🩺 **Comando de Auditoria Dedicado**: Execute `gc-helper audit` (ou `gc audit`) a qualquer momento para verificar a saúde da conexão e inspecionar a configuração de todas as ferramentas.
+* 🎛️ **Painel de Gerenciamento Inteligente**: Uma vez configurado, executar `gc-helper` ou `gc` não pede novamente a URL/API key—ele oferece status instantâneo por padrão ao pressionar Enter, com re-sincronização em 1 segundo.
+* 🩺 **Comandos Dedicados de Status e Auditoria**: Execute `gc status` ou `gc audit` a qualquer momento para verificar a saúde da conexão e inspecionar a configuração de todas as ferramentas.
 
 ---
 
@@ -127,7 +129,9 @@ Passo 5: Modo de Persistência
 
 | Subcomando | Alias | Descrição | Exemplo |
 | :--- | :--- | :--- | :--- |
-| **`setup`** | *(padrão)* | Executa o assistente de configuração interativo. | `gc-helper` ou `gc` |
+| **`setup`** | *(padrão)* | Executa o assistente ou painel de gerenciamento se já configurado. | `gc-helper` ou `gc` |
+| **`status`** | `audit`, `check` | Verificação rápida de conexão e diagnóstico dos harnesses instalados. | `gc-helper status` ou `gc status` |
+| **`sync`** | `--sync` | Re-sincronização rápida das credenciais existentes para todos os harnesses detectados. | `gc-helper sync` ou `gc sync` |
 | **`audit`** | `--audit`, `check` | Audita a saúde da conexão, latência, catálogo de modelos e status das IAs. | `gc-helper audit` ou `gc audit` |
 | **`help`** | `--help`, `-h` | Exibe o manual de parâmetros no terminal. | `gc-helper help` ou `gc help` |
 
@@ -139,6 +143,7 @@ Passo 5: Modo de Persistência
 | **`--key <chave>`** | String | Auto-detectada | Chave de API do GhostCLI (`gcli_...`). |
 | **`--mode <modo>`** | String | `both` | Modo de persistência: `both` (ambos), `config` (apenas arquivos) ou `env` (apenas variáveis). |
 | **`--tools <lista>`** | String | Auto | Lista separada por vírgula: `claude`, `codex`, `hermes`, `openclaw`, `opencode`, `omp` ou `all`. |
+| **`--reconfigure`, `--force`** | Flag | `false` | Força a reconfiguração da URL e API Key mesmo que já configurado. |
 | **`-y, --yes`** | Flag | `false` | Modo não-interativo (aplica os padrões sem solicitar confirmação). |
 | **`--dry-run`** | Flag | `false` | Simula a execução e exibe o plano sem gravar nada no disco. |
 
@@ -154,6 +159,7 @@ Passo 5: Modo de Persistência
 | **OpenClaw** | `~/.openclaw/openclaw.json` | `base_url = "https://ghostcli.cloud/v1"`<br>`api_key = "gcli_..."` |
 | **OpenCode** | `~/.config/opencode/config.json` | `providers.ghostcli.type = "openai"`<br>`providers.ghostcli.base_url = "https://ghostcli.cloud/v1"` |
 | **Oh My Pi (`omp`)** | `~/.omp/config.json` | `models.provider = "openai-compatible"`<br>`models.base_url = "https://ghostcli.cloud/v1"` |
+| **Visual Studio Code** | `Code/User/settings.json` | `terminal.integrated.env.<os>.ANTHROPIC_BASE_URL = "https://ghostcli.cloud"`<br>`terminal.integrated.env.<os>.OPENAI_BASE_URL = "https://ghostcli.cloud/v1"`<br>`terminal.integrated.env.<os>.GHOSTCLI_API_KEY = "gcli_..."` |
 | **Ambiente Global** | Registro do Windows (HKCU) / `~/.zshrc` / `~/.bashrc` | `ANTHROPIC_BASE_URL`<br>`OPENAI_BASE_URL`<br>`GHOSTCLI_API_KEY`<br>`ANTHROPIC_API_KEY` |
 
 ---

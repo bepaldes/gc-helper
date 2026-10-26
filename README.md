@@ -42,9 +42,11 @@ However, manually configuring each AI coding assistant requires editing fragment
   * **OpenClaw** (`~/.openclaw/openclaw.json`)
   * **OpenCode Interpreter / CLI** (`config.json`)
   * **Oh My Pi (`omp`)** (`~/.omp/config.json`)
+  * **Visual Studio Code** (`Code/User/settings.json`)
 * 🛡️ **Non-Destructive Backups**: Automatically creates `.bak` safety backups before updating any configuration file.
 * 💾 **Dual Persistence (Config + Environment)**: By default, updates both tool-specific configuration files AND system-wide user environment variables (Windows User Registry `HKCU\Environment` or macOS/Linux `~/.zshrc` / `~/.bashrc`).
-* 🩺 **Standalone Audit Command**: Run `gc-helper audit` (or `gc audit`) at any time to verify connection health and inspect all harness configurations.
+* 🎛️ **Intelligent Management Hub**: Once configured, running `gc-helper` or `gc` never re-prompts for URL/API key—it presents an instant status check by default on Enter, with 1-second harness re-sync.
+* 🩺 **Standalone Status & Audit Commands**: Run `gc status` or `gc audit` at any time for instant connection verification and active harness diagnosis.
 
 ---
 
@@ -127,8 +129,10 @@ Step 5: Persistence Mode
 
 | Subcommand | Alias | Description | Example |
 | :--- | :--- | :--- | :--- |
-| **`setup`** | *(default)* | Runs the interactive setup wizard. | `gc-helper` or `gc` |
-| **`audit`** | `--audit`, `check` | Audits connection health, latency, model catalogs, and harness status. | `gc-helper audit` or `gc audit` |
+| **`setup`** | *(default)* | Runs the interactive wizard or management hub. | `gc-helper` or `gc` |
+| **`status`** | `audit`, `check` | Quick connection verification and active harness audit. | `gc-helper status` or `gc status` |
+| **`sync`** | `--sync` | Fast zero-prompt re-sync of existing credentials to all detected harnesses. | `gc-helper sync` or `gc sync` |
+| **`audit`** | `--audit`, `check` | Deep connection health, latency, model catalogs, and harness inspection. | `gc-helper audit` or `gc audit` |
 | **`help`** | `--help`, `-h` | Displays the terminal parameter reference. | `gc-helper help` or `gc help` |
 
 ### CLI Options (Headless / Automation)
@@ -139,6 +143,7 @@ Step 5: Persistence Mode
 | **`--key <key>`** | String | Auto-detected | GhostCLI API key (`gcli_...`). |
 | **`--mode <mode>`** | String | `both` | Persistence target: `both`, `config` (files only), or `env` (environment only). |
 | **`--tools <list>`** | String | Auto | Comma-separated list: `claude`, `codex`, `hermes`, `openclaw`, `opencode`, `omp`, or `all`. |
+| **`--reconfigure`, `--force`** | Flag | `false` | Force re-prompting for Base URL and API key even when already configured. |
 | **`-y, --yes`** | Flag | `false` | Non-interactive mode (uses defaults without prompting). |
 | **`--dry-run`** | Flag | `false` | Simulates actions and prints planned changes without writing to disk. |
 
@@ -154,6 +159,7 @@ Step 5: Persistence Mode
 | **OpenClaw** | `~/.openclaw/openclaw.json` | `base_url = "https://ghostcli.cloud/v1"`<br>`api_key = "gcli_..."` |
 | **OpenCode** | `~/.config/opencode/config.json` | `providers.ghostcli.type = "openai"`<br>`providers.ghostcli.base_url = "https://ghostcli.cloud/v1"` |
 | **Oh My Pi (`omp`)** | `~/.omp/config.json` | `models.provider = "openai-compatible"`<br>`models.base_url = "https://ghostcli.cloud/v1"` |
+| **Visual Studio Code** | `Code/User/settings.json` | `terminal.integrated.env.<os>.ANTHROPIC_BASE_URL = "https://ghostcli.cloud"`<br>`terminal.integrated.env.<os>.OPENAI_BASE_URL = "https://ghostcli.cloud/v1"`<br>`terminal.integrated.env.<os>.GHOSTCLI_API_KEY = "gcli_..."` |
 | **System Environment** | Windows Registry (HKCU) / `~/.zshrc` / `~/.bashrc` | `ANTHROPIC_BASE_URL`<br>`OPENAI_BASE_URL`<br>`GHOSTCLI_API_KEY`<br>`ANTHROPIC_API_KEY` |
 
 ---
