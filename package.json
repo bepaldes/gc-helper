@@ -1,7 +1,7 @@
 {
   "name": "gc-helper",
   "version": "1.0.0",
-  "description": "Interactive auto-configurator and connection auditor for AI coding harnesses (Claude Code, Codex CLI, Hermes Agent, OpenClaw, OpenCode, and OMP).",
+  "description": "Zero-dependency auto-configurator, connection auditor, and status hub for AI coding harnesses (Claude Code, Codex, Hermes, VS Code, Claude Desktop, OpenClaw, OpenCode, OMP).",
   "type": "module",
   "main": "./src/cli.mjs",
   "bin": {
@@ -10,6 +10,8 @@
   },
   "scripts": {
     "start": "node bin/gc-helper.mjs",
+    "status": "node bin/gc-helper.mjs status",
+    "sync": "node bin/gc-helper.mjs sync",
     "audit": "node bin/gc-helper.mjs audit",
     "test": "node test/test.mjs"
   },
@@ -21,12 +23,15 @@
     "ghostcli",
     "claude-code",
     "codex",
+    "vscode",
+    "claude-desktop",
     "hermes-agent",
     "openclaw",
     "opencode",
     "omp",
     "ai-agent",
-    "proxy-setup"
+    "llm-proxy",
+    "developer-tools"
   ],
   "author": "bepaldes",
   "license": "MIT",
