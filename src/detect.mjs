@@ -11,6 +11,9 @@ import { execSync } from 'node:child_process';
 
 const userHome = os.homedir();
 const isWin = process.platform === 'win32';
+const localAppData = process.env.LOCALAPPDATA || path.join(userHome, 'AppData', 'Local');
+const appData = process.env.APPDATA || path.join(userHome, 'AppData', 'Roaming');
+const configHome = process.env.XDG_CONFIG_HOME || path.join(userHome, '.config');
 
 export function checkBinary(cmd) {
   try {
@@ -103,7 +106,16 @@ export function getToolPaths() {
         ? path.join(localAppData, 'Claude-3p')
         : (process.platform === 'darwin'
             ? path.join(userHome, 'Library', 'Application Support', 'Claude-3p')
-            : path.join(configHome, 'Claude-3p'))
+            : path.join(configHome, 'Claude-3p')),
+      candidateBins: isWin
+        ? [
+            path.join(localAppData, 'Programs', 'Claude', 'Claude.exe'),
+            path.join(localAppData, 'Claude', 'Claude.exe'),
+            path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Claude', 'Claude.exe')
+          ]
+        : (process.platform === 'darwin'
+            ? ['/Applications/Claude.app']
+            : ['/usr/bin/claude-desktop', '/opt/Claude/claude-desktop'])
     }
   };
 }
@@ -281,9 +293,29 @@ export function detectHarnesses() {
   };
 
   // 8. Claude Desktop (Official)
+  let desktopBin = checkBinary('claude-desktop');
+  if (!desktopBin) {
+    for (const b of toolPaths.desktop.candidateBins) {
+      if (fs.existsSync(b)) { desktopBin = b; break; }
+    }
+  }
+  if (!desktopBin && isWin) {
+    const packagesDir = path.join(localAppData, 'Packages');
+    if (fs.existsSync(packagesDir)) {
+      try {
+        const pkgs = fs.readdirSync(packagesDir);
+        for (const p of pkgs) {
+          if (p.toLowerCase().startsWith('claude_')) {
+            desktopBin = p;
+            break;
+          }
+        }
+      } catch {}
+    }
+  }
+
   const desktop1pExists = fs.existsSync(toolPaths.desktop.config);
   const desktop3pExists = fs.existsSync(toolPaths.desktop.dir3p);
-  const desktopDirExists = fs.existsSync(toolPaths.desktop.dir);
   let desktopEndpoint = null;
 
   if (desktop3pExists) {
@@ -311,7 +343,8 @@ export function detectHarnesses() {
   results.desktop = {
     id: 'desktop',
     name: 'Claude Desktop App',
-    installed: Boolean(desktop1pExists || desktop3pExists || desktopDirExists),
+    installed: Boolean(desktopBin),
+    bin: desktopBin,
     configPath: toolPaths.desktop.config,
     configExists: desktop1pExists,
     currentEndpoint: desktopEndpoint
