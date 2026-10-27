@@ -16,6 +16,16 @@ export function configureHermes(configPath, urls, apiKey, dryRun = false) {
   }
 
   // Update or append Hermes provider config
+  const modelsBlock = `    models:
+      claude-opus-5-5:
+        context_length: 1000000
+      claude-sonnet-5:
+        context_length: 1000000
+      claude-fable-5.1:
+        context_length: 1000000
+      gpt-6-astra:
+        context_length: 1000000`;
+
   const ghostBlock = `
 # GhostCLI Provider configuration added by gc-helper
 default: "ghostcli/claude-opus-5-5"
@@ -25,22 +35,29 @@ providers:
   ghostcli:
     base_url: "${urls.openaiUrl}"
     api_key: "${apiKey}"
-    models:
-      - "claude-opus-5-5"
-      - "claude-sonnet-5"
-      - "claude-fable-5.1"
-      - "gpt-6-astra"
-      - "z-ai/glm-5.3"
+${modelsBlock}
 `;
+
+  // Repair any broken "\rdefault:" line lacking a newline
+  content = content.replace(/([^\n])\r([ \t]*default:)/g, '$1\r\n  default:');
 
   if (content.includes('providers:')) {
     // If providers already exists, check if ghostcli is defined
     if (!content.includes('ghostcli:')) {
-      content = content.replace('providers:', `providers:\n  ghostcli:\n    base_url: "${urls.openaiUrl}"\n    api_key: "${apiKey}"`);
+      content = content.replace('providers:', `providers:\n  ghostcli:\n    base_url: "${urls.openaiUrl}"\n    api_key: "${apiKey}"\n${modelsBlock}`);
+    } else {
+      // Upgrade any lower context_length values to 1000000
+      content = content.replace(/^([ \t]*context_length:\s*)(\d+)/gm, (match, prefix, val) => {
+        const num = Number(val);
+        return num < 1000000 ? `${prefix}1000000` : match;
+      });
+      if (!/^[ \t]*context_length:/m.test(content)) {
+        content = content.replace(/^([ \t]*ghostcli:.*)$/m, `$1\n${modelsBlock}`);
+      }
     }
-    // Update default model
-    if (content.match(/^\s*default:/m)) {
-      content = content.replace(/^\s*default:.*$/m, 'default: "ghostcli/claude-opus-5-5"');
+    // Update default model preserving leading spaces/tabs only
+    if (/^[ \t]*default:/m.test(content)) {
+      content = content.replace(/^([ \t]*)default:.*$/m, '$1default: "ghostcli/claude-opus-5-5"');
     }
   } else {
     content = content.trim() + '\n' + ghostBlock.trim() + '\n';

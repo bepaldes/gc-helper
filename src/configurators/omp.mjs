@@ -23,6 +23,8 @@ export function configureOmp(configPath, urls, apiKey, dryRun = false) {
   config.models.provider = 'openai-compatible';
   config.models.base_url = urls.openaiUrl;
   config.models.api_key = apiKey;
+  config.models.context_window = Math.max(Number(config.models.context_window) || 0, 1048576);
+  config.models.max_tokens = Math.max(Number(config.models.max_tokens) || 0, 131072);
 
   if (!dryRun) {
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));

@@ -22,6 +22,8 @@ export function configureOpenClaw(configPath, urls, apiKey, dryRun = false) {
   config.base_url = urls.openaiUrl;
   config.api_key = apiKey;
   if (!config.model) config.model = 'claude-sonnet-5';
+  config.context_window = Math.max(Number(config.context_window) || 0, 1048576);
+  config.max_output_tokens = Math.max(Number(config.max_output_tokens) || 0, 131072);
 
   if (!dryRun) {
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));

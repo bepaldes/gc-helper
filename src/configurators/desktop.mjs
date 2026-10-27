@@ -113,12 +113,14 @@ export function configureClaudeDesktop(configPath, urls, apiKey, dryRun = false,
     inferenceGatewayApiKey: apiKey,
     inferenceGatewayAuthScheme: 'bearer',
     modelDiscoveryEnabled: true,
+    contextWindow: 1000000,
+    maxContextWindow: 1000000,
+    maxOutputTokens: 128000,
     inferenceModels: [
       'claude-opus-5-5',
       'claude-sonnet-5',
       'claude-fable-5.1',
-      'gpt-6-astra',
-      'z-ai/glm-5.3'
+      'gpt-6-astra'
     ]
   };
 

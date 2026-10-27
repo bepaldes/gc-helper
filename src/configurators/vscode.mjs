@@ -34,6 +34,8 @@ export function configureVsCode(configPath, urls, apiKey, dryRun = false) {
   settings[envKey].OPENAI_BASE_URL = urls.openaiUrl;
   settings[envKey].GHOSTCLI_API_KEY = apiKey;
   settings[envKey].ANTHROPIC_API_KEY = apiKey;
+  settings[envKey].CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY = '1';
+  settings[envKey].CLAUDE_CODE_DISABLE_1M_CONTEXT = '0';
 
   if (!dryRun) {
     fs.writeFileSync(configPath, JSON.stringify(settings, null, 2));

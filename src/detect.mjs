@@ -120,6 +120,123 @@ export function getToolPaths() {
   };
 }
 
+export function inspectHarnessContext(id, configPath) {
+  if (!configPath || !fs.existsSync(configPath)) {
+    return { ok: false, detail: 'Config file not present' };
+  }
+
+  try {
+    if (id === 'claude') {
+      const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      const flag = cfg.env?.CLAUDE_CODE_DISABLE_1M_CONTEXT;
+      if (flag === '0' || flag === 0 || flag === false) {
+        return { ok: true, detail: '1M extended context enabled (CLAUDE_CODE_DISABLE_1M_CONTEXT=0)' };
+      }
+      if (flag === '1' || flag === 1 || flag === true) {
+        return { ok: false, detail: '1M context disabled (CLAUDE_CODE_DISABLE_1M_CONTEXT=1)' };
+      }
+      return { ok: false, detail: 'CLAUDE_CODE_DISABLE_1M_CONTEXT not explicitly set to 0' };
+    }
+
+    if (id === 'codex') {
+      const content = fs.readFileSync(configPath, 'utf8');
+      const catMatch = content.match(/model_catalog_json\s*=\s*["']([^"']+)["']/);
+      const catalogPath = catMatch ? catMatch[1] : path.join(path.dirname(configPath), 'ghostcli-models.json');
+      if (!fs.existsSync(catalogPath)) {
+        return { ok: false, detail: 'ghostcli-models.json catalog missing' };
+      }
+      const catalog = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
+      const models = Array.isArray(catalog.models) ? catalog.models : [];
+      if (models.length === 0) {
+        return { ok: false, detail: 'No models in catalog' };
+      }
+      const capped = models.filter(m => {
+        const topCtx = Number(m.context_window) || 0;
+        const maxCtx = Number(m.max_context_window) || topCtx;
+        const msgCtx = m.model_messages ? (Number(m.model_messages.context_window) || 0) : topCtx;
+        return topCtx < 1000000 || maxCtx < 1000000 || msgCtx < 1000000;
+      });
+      if (capped.length > 0) {
+        return {
+          ok: false,
+          detail: `${capped.length}/${models.length} model(s) capped below 1M (${capped.map(m => `${m.slug}:${m.context_window}`).join(', ')})`
+        };
+      }
+      return { ok: true, detail: `All ${models.length} catalog models configured at 1M context` };
+    }
+
+    if (id === 'hermes') {
+      const content = fs.readFileSync(configPath, 'utf8');
+      const matches = [...content.matchAll(/^[ \t]*context_length:\s*(\d+)/gm)];
+      if (matches.length === 0) {
+        return { ok: false, detail: 'No explicit context_length found in config.yaml' };
+      }
+      const capped = matches.filter(m => Number(m[1]) < 1000000);
+      if (capped.length > 0) {
+        return { ok: false, detail: `Found context_length below 1M (${capped.map(m => m[1]).join(', ')})` };
+      }
+      return { ok: true, detail: `All ${matches.length} model entries configured at 1M context_length` };
+    }
+
+    if (id === 'vscode') {
+      const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      const envKey = isWin
+        ? 'terminal.integrated.env.windows'
+        : (process.platform === 'darwin' ? 'terminal.integrated.env.osx' : 'terminal.integrated.env.linux');
+      const flag = cfg[envKey]?.CLAUDE_CODE_DISABLE_1M_CONTEXT;
+      if (flag === '0') {
+        return { ok: true, detail: '1M context enabled in integrated terminal' };
+      }
+      return { ok: false, detail: 'CLAUDE_CODE_DISABLE_1M_CONTEXT=0 not set in terminal env' };
+    }
+
+    if (id === 'openclaw') {
+      const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      const ctx = Number(cfg.context_window) || 0;
+      return ctx >= 1000000
+        ? { ok: true, detail: `1M context_window (${ctx})` }
+        : { ok: false, detail: `context_window is ${ctx || 'unset'}` };
+    }
+
+    if (id === 'opencode') {
+      const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      const ctx = Number(cfg.providers?.ghostcli?.context_window) || 0;
+      return ctx >= 1000000
+        ? { ok: true, detail: `1M context_window (${ctx})` }
+        : { ok: false, detail: `context_window is ${ctx || 'unset'}` };
+    }
+
+    if (id === 'omp') {
+      const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      const ctx = Number(cfg.models?.context_window) || 0;
+      return ctx >= 1000000
+        ? { ok: true, detail: `1M context_window (${ctx})` }
+        : { ok: false, detail: `context_window is ${ctx || 'unset'}` };
+    }
+
+    if (id === 'desktop') {
+      const toolPaths = getToolPaths();
+      const metaPath = path.join(toolPaths.desktop.dir3p, 'configLibrary', '_meta.json');
+      if (fs.existsSync(metaPath)) {
+        const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+        const profPath = path.join(toolPaths.desktop.dir3p, 'configLibrary', `${meta.appliedId}.json`);
+        if (fs.existsSync(profPath)) {
+          const prof = JSON.parse(fs.readFileSync(profPath, 'utf8'));
+          const ctx = Number(prof.maxContextWindow || prof.contextWindow) || 0;
+          if (ctx >= 1000000) {
+            return { ok: true, detail: `1M maxContextWindow (${ctx})` };
+          }
+        }
+      }
+      return { ok: false, detail: '1M maxContextWindow not set in 3P profile' };
+    }
+  } catch (err) {
+    return { ok: false, detail: `Failed to inspect context (${err.message})` };
+  }
+
+  return { ok: false, detail: 'Unknown harness' };
+}
+
 export function detectHarnesses() {
   const toolPaths = getToolPaths();
   const results = {};
@@ -349,6 +466,10 @@ export function detectHarnesses() {
     configExists: desktop1pExists,
     currentEndpoint: desktopEndpoint
   };
+
+  for (const [id, h] of Object.entries(results)) {
+    h.contextStatus = h.configExists ? inspectHarnessContext(id, h.configPath) : null;
+  }
 
   return results;
 }

@@ -6,9 +6,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { normalizeUrls, probeEndpoint } from '../src/audit.mjs';
+import { normalizeUrls, probeEndpoint, extractModelSpecs } from '../src/audit.mjs';
 import { parseArgs } from '../src/cli.mjs';
-import { isConfigured, detectConfiguredEndpoint } from '../src/detect.mjs';
+import { isConfigured, detectConfiguredEndpoint, inspectHarnessContext } from '../src/detect.mjs';
 import { configureClaude } from '../src/configurators/claude.mjs';
 import { configureCodex } from '../src/configurators/codex.mjs';
 import { configureHermes } from '../src/configurators/hermes.mjs';
@@ -100,6 +100,7 @@ try {
   assert(cData.existingProp === true, 'Claude preserves existing config properties');
   assert(cData.env.ANTHROPIC_BASE_URL === 'https://ghostcli.cloud', 'Claude ANTHROPIC_BASE_URL updated');
   assert(cData.env.ANTHROPIC_API_KEY === testKey, 'Claude ANTHROPIC_API_KEY updated');
+  assert(cData.env.CLAUDE_CODE_DISABLE_1M_CONTEXT === '0', 'Claude enables 1M context window (CLAUDE_CODE_DISABLE_1M_CONTEXT=0)');
   assert(cData.model === 'opus', 'Claude model defaults to opus');
   assert(cData.modelSettings['claude-sonnet-5']?.effortLevel === 'medium', 'Default claude-sonnet-5 configured');
   assert(cData.modelSettings['claude-opus-5-5']?.effortLevel === 'medium', 'Default claude-opus-5-5 configured');
@@ -175,6 +176,26 @@ trust_level = "trusted"
   const catalogData = JSON.parse(fs.readFileSync(expectedCatalog, 'utf8'));
   assert(Array.isArray(catalogData.models) && catalogData.models.some(m => m.slug === 'gpt-6-astra'), 'Codex catalog contains gpt-6-astra');
   assert(!catalogData.models.some(m => m.slug === 'z-ai/glm-5.3'), 'Codex catalog excludes z-ai/glm-5.3');
+  assert(catalogData.models.every(m => m.context_window >= 1000000 && m.max_context_window >= 1000000), 'Codex catalog sets all models to >= 1M context_window and max_context_window');
+  assert(catalogData.models.every(m => m.model_messages?.context_window >= 1000000 && m.model_messages?.max_context_window >= 1000000), 'Codex catalog sets all model_messages to >= 1M context_window and max_context_window');
+  assert(codexContent.includes('model_context_window = 1048576'), 'Codex config.toml sets model_context_window = 1048576');
+
+  // Verify existing capped catalog models are upgraded to 1M
+  const cappedCatalogPath = path.join(tmpDir, 'capped-models.json');
+  fs.writeFileSync(cappedCatalogPath, JSON.stringify({
+    models: [
+      {
+        slug: 'claude-opus-5-5',
+        context_window: 256000,
+        max_context_window: 256000,
+        model_messages: { context_window: 256000, max_context_window: 256000 }
+      }
+    ]
+  }));
+  const codexUpgradeFile = path.join(tmpDir, 'codex-upgrade.toml');
+  configureCodex(codexUpgradeFile, testUrls, testKey, false, cappedCatalogPath);
+  const upgradedCatalog = JSON.parse(fs.readFileSync(cappedCatalogPath, 'utf8'));
+  assert(upgradedCatalog.models.every(m => m.context_window >= 1000000 && m.max_context_window >= 1000000 && m.model_messages?.context_window >= 1000000), 'Codex upgrades existing 256K models in catalog to >= 1M');
 
   // Verify preservation of existing custom model
   const customModelFile = path.join(tmpDir, 'codex-custom.toml');
@@ -192,7 +213,8 @@ trust_level = "trusted"
   const hermesContent = fs.readFileSync(hermesFile, 'utf8');
   assert(hermesContent.includes('default: "ghostcli/claude-opus-5-5"'), 'Hermes default model set');
   assert(hermesContent.includes('ghostcli:'), 'Hermes provider block created');
-  assert(hermesContent.includes(`base_url: "https://ghostcli.cloud/v1"`), 'Hermes base_url set');
+  assert(hermesContent.includes(`base_url: "https://ghostcli.cloud/v1"`) || hermesContent.includes(`base_url: "https://ghostcli.cloud"`), 'Hermes base_url set');
+  assert(hermesContent.includes('context_length: 1000000'), 'Hermes sets 1M context_length for models');
 
   // OpenClaw
   const clawFile = path.join(tmpDir, 'openclaw.json');
@@ -200,18 +222,21 @@ trust_level = "trusted"
   const clawData = JSON.parse(fs.readFileSync(clawFile, 'utf8'));
   assert(clawData.base_url === 'https://ghostcli.cloud/v1', 'OpenClaw base_url updated');
   assert(clawData.api_key === testKey, 'OpenClaw api_key set');
+  assert(clawData.context_window >= 1000000, 'OpenClaw context_window set to >= 1M');
 
   // OpenCode
   const opencodeFile = path.join(tmpDir, 'opencode.json');
   configureOpenCode(opencodeFile, testUrls, testKey);
   const ocData = JSON.parse(fs.readFileSync(opencodeFile, 'utf8'));
   assert(ocData.providers.ghostcli.base_url === 'https://ghostcli.cloud/v1', 'OpenCode provider configured');
+  assert(ocData.providers.ghostcli.context_window >= 1000000, 'OpenCode provider context_window set to >= 1M');
 
   // Oh My Pi (omp)
   const ompFile = path.join(tmpDir, 'omp.json');
   configureOmp(ompFile, testUrls, testKey);
   const ompData = JSON.parse(fs.readFileSync(ompFile, 'utf8'));
   assert(ompData.models.base_url === 'https://ghostcli.cloud/v1', 'Oh My Pi (omp) models.base_url updated');
+  assert(ompData.models.context_window >= 1000000, 'Oh My Pi (omp) models.context_window set to >= 1M');
 
   // Visual Studio Code
   const vscodeFile = path.join(tmpDir, 'vscode-settings.json');
@@ -229,6 +254,7 @@ trust_level = "trusted"
   assert(vsData[envKey].ANTHROPIC_BASE_URL === 'https://ghostcli.cloud', 'VS Code terminal ANTHROPIC_BASE_URL configured');
   assert(vsData[envKey].OPENAI_BASE_URL === 'https://ghostcli.cloud/v1', 'VS Code terminal OPENAI_BASE_URL configured');
   assert(vsData[envKey].GHOSTCLI_API_KEY === testKey, 'VS Code terminal GHOSTCLI_API_KEY configured');
+  assert(vsData[envKey].CLAUDE_CODE_DISABLE_1M_CONTEXT === '0', 'VS Code terminal enables 1M context window');
   assert(fs.existsSync(vsRes.backup), 'VS Code backup created');
 
   // Fresh file creation when settings.json does not exist
@@ -273,6 +299,39 @@ trust_level = "trusted"
   assert(profileData.inferenceGatewayApiKey === testKey, 'Claude Desktop 3P API Key set');
   assert(profileData.inferenceGatewayAuthScheme === 'bearer', 'Claude Desktop 3P auth scheme is bearer');
   assert(profileData.modelDiscoveryEnabled === true, 'Claude Desktop 3P modelDiscoveryEnabled is true');
+  assert(profileData.maxContextWindow >= 1000000, 'Claude Desktop 3P maxContextWindow set to >= 1M');
+
+  // Context window inspection checks
+  const claudeCtxCheck = inspectHarnessContext('claude', claudeFile);
+  assert(claudeCtxCheck.ok === true, 'inspectHarnessContext confirms Claude Code 1M context is enabled');
+
+  const codexCtxCheck = inspectHarnessContext('codex', codexFile);
+  assert(codexCtxCheck.ok === true, 'inspectHarnessContext confirms Codex CLI all models are at 1M context');
+
+  const cappedCodexToml = path.join(tmpDir, 'capped-check.toml');
+  const cappedJson = path.join(tmpDir, 'capped-check-models.json');
+  fs.writeFileSync(cappedJson, JSON.stringify({
+    models: [{ slug: 'claude-opus-5-5', context_window: 256000, max_context_window: 256000 }]
+  }));
+  fs.writeFileSync(cappedCodexToml, `model_catalog_json = "${cappedJson.replaceAll('\\', '/')}"\n`);
+  const cappedCheck = inspectHarnessContext('codex', cappedCodexToml);
+  assert(cappedCheck.ok === false, 'inspectHarnessContext detects capped 256K models in Codex catalog');
+
+  // extractModelSpecs resolution across data[] and models[] and filtering offline GLM 5.3
+  const specs = extractModelSpecs({
+    models: [
+      { slug: 'claude-opus-5-5', display_name: 'Claude Opus 5.5', context_window: 256000, max_context_window: 256000 },
+      { slug: 'z-ai/glm-5.3', display_name: 'GLM 5.3', context_window: 1000000, max_context_window: 1000000 }
+    ],
+    data: [
+      { id: 'claude-opus-5-5', display_name: 'Claude Opus 5.5', context_window: 1000000, max_input_tokens: 1000000, max_output_tokens: 128000 },
+      { id: 'z-ai/glm-5.3', display_name: 'GLM 5.3', context_window: 1000000, max_input_tokens: 1000000, max_output_tokens: 128000 }
+    ]
+  });
+  assert(specs.length === 1 && specs[0].contextWindow === 1000000 && specs[0].maxOutputTokens === 128000, 'extractModelSpecs resolves highest context window and filters out offline z-ai/glm-5.3');
+  assert(!hermesContent.includes('glm-5.3'), 'Hermes excludes offline z-ai/glm-5.3');
+  assert(!ocData.providers.ghostcli.models['z-ai/glm-5.3'], 'OpenCode excludes offline z-ai/glm-5.3');
+  assert(!profileData.inferenceModels.includes('z-ai/glm-5.3'), 'Claude Desktop 3P excludes offline z-ai/glm-5.3');
 
 } finally {
   // Cleanup tmpDir

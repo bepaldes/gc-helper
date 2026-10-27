@@ -23,7 +23,7 @@ export function configureClaude(configPath, urls, apiKey, dryRun = false) {
   settings.env.ANTHROPIC_BASE_URL = urls.claudeUrl;
   settings.env.ANTHROPIC_API_KEY = apiKey;
   settings.env.CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY = '1';
-  settings.env.CLAUDE_CODE_DISABLE_1M_CONTEXT = '1';
+  settings.env.CLAUDE_CODE_DISABLE_1M_CONTEXT = '0';
 
   if (!settings.modelSettings || typeof settings.modelSettings !== 'object') {
     settings.modelSettings = {};

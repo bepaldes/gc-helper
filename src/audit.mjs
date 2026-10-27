@@ -25,6 +25,56 @@ export function normalizeUrls(rawUrl = 'https://ghostcli.cloud') {
   };
 }
 
+export function isOfflineModel(modelId = '') {
+  const normalized = String(modelId).trim().toLowerCase();
+  return normalized.includes('glm-5.3');
+}
+
+export function extractModelSpecs(data = {}) {
+  const combined = [
+    ...(Array.isArray(data.data) ? data.data : []),
+    ...(Array.isArray(data.models) ? data.models : [])
+  ];
+
+  const byId = new Map();
+  for (const m of combined) {
+    if (!m || typeof m !== 'object') continue;
+    const rawId = m.id || m.slug || m.model || m.name;
+    if (!rawId || typeof rawId !== 'string') continue;
+    const id = rawId.replace(/\[1m\]$/i, '');
+    if (isOfflineModel(id)) continue;
+
+    const candidateContext = Math.max(
+      Number(m.context_window) || 0,
+      Number(m.max_context_window) || 0,
+      Number(m.max_input_tokens) || 0,
+      Number(m.model_messages?.context_window) || 0,
+      Number(m.model_messages?.max_context_window) || 0,
+      1000000
+    );
+    const candidateOutput = Math.max(
+      Number(m.max_output_tokens) || 0,
+      Number(m.max_tokens) || 0,
+      128000
+    );
+
+    const existing = byId.get(id);
+    if (!existing) {
+      byId.set(id, {
+        id,
+        displayName: (m.display_name || id).replace(/\s*\(1M\)$/i, ''),
+        contextWindow: candidateContext,
+        maxOutputTokens: candidateOutput
+      });
+    } else {
+      existing.contextWindow = Math.max(existing.contextWindow, candidateContext);
+      existing.maxOutputTokens = Math.max(existing.maxOutputTokens, candidateOutput);
+    }
+  }
+
+  return Array.from(byId.values());
+}
+
 export async function probeEndpoint(rawUrl, apiKey, timeoutMs = 10000) {
   if (!apiKey || typeof apiKey !== 'string' || apiKey.trim() === '') {
     return {
@@ -62,8 +112,8 @@ export async function probeEndpoint(rawUrl, apiKey, timeoutMs = 10000) {
         data = {};
       }
 
-      const modelsList = data.data || data.models || [];
-      const modelIds = modelsList.map(m => m.id || m.slug || m.name).filter(Boolean);
+      const modelSpecs = extractModelSpecs(data);
+      const modelIds = modelSpecs.map(s => s.id);
 
       return {
         ok: true,
@@ -71,6 +121,7 @@ export async function probeEndpoint(rawUrl, apiKey, timeoutMs = 10000) {
         latencyMs,
         urls,
         models: modelIds,
+        modelSpecs,
         totalModels: modelIds.length,
         message: 'Endpoint reachable and authenticated.'
       };

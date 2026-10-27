@@ -13,7 +13,8 @@ export function configureEnvironmentVariables(urls, apiKey, dryRun = false) {
     OPENAI_BASE_URL: urls.openaiUrl,
     OPENAI_API_KEY: apiKey,
     GHOSTCLI_API_KEY: apiKey,
-    CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: '1'
+    CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: '1',
+    CLAUDE_CODE_DISABLE_1M_CONTEXT: '0'
   };
 
   const results = {

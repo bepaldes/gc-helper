@@ -133,7 +133,15 @@ export async function runAudit(options = {}) {
     if (probe.ok) {
       console.log(`${colors.green}✔ Connection verified!${colors.reset} Status: 200 OK | Latency: ${probe.latencyMs}ms`);
       console.log(`${colors.green}✔ Discovered ${probe.totalModels} models:${colors.reset}`);
-      probe.models.forEach(m => console.log(`   • ${m}`));
+      if (Array.isArray(probe.modelSpecs) && probe.modelSpecs.length > 0) {
+        probe.modelSpecs.forEach(s => {
+          const ctxLabel = s.contextWindow >= 1000000 ? `${s.contextWindow.toLocaleString()} tokens (1M Max)` : `${s.contextWindow.toLocaleString()} tokens`;
+          const outLabel = `${s.maxOutputTokens.toLocaleString()} max output`;
+          console.log(`   • ${colors.bold}${s.id.padEnd(20)}${colors.reset} ${colors.dim}[Context: ${colors.green}${ctxLabel}${colors.dim} | ${outLabel}]${colors.reset}`);
+        });
+      } else {
+        probe.models.forEach(m => console.log(`   • ${m}`));
+      }
     } else {
       console.log(`${colors.red}✖ Connection failed: ${probe.error}${colors.reset}`);
     }
@@ -149,6 +157,11 @@ export async function runAudit(options = {}) {
     if (h.bin) console.log(`      Binary: ${colors.dim}${h.bin}${colors.reset}`);
     if (h.configExists) console.log(`      Config: ${colors.dim}${h.configPath}${colors.reset}`);
     if (h.currentEndpoint) console.log(`      Endpoint: ${colors.yellow}${h.currentEndpoint}${colors.reset}`);
+    if (h.contextStatus) {
+      const ctxColor = h.contextStatus.ok ? colors.green : colors.red;
+      const ctxIcon = h.contextStatus.ok ? '✔' : '✖';
+      console.log(`      Context:  ${ctxColor}${ctxIcon} ${h.contextStatus.detail}${colors.reset}`);
+    }
   }
   console.log('');
 }

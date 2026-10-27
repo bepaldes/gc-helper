@@ -23,7 +23,15 @@ export function configureOpenCode(configPath, urls, apiKey, dryRun = false) {
   config.providers.ghostcli = {
     type: 'openai',
     base_url: urls.openaiUrl,
-    api_key: apiKey
+    api_key: apiKey,
+    context_window: 1048576,
+    max_tokens: 131072,
+    models: {
+      'claude-opus-5-5': { context_window: 1048576, max_tokens: 131072 },
+      'claude-sonnet-5': { context_window: 1048576, max_tokens: 131072 },
+      'claude-fable-5.1': { context_window: 1048576, max_tokens: 131072 },
+      'gpt-6-astra': { context_window: 1048576, max_tokens: 131072 }
+    }
   };
   config.default_provider = 'ghostcli';
 
