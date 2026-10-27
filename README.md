@@ -1,6 +1,6 @@
 # GC-Helper (`gc-helper` / `gc`)
 
-> **Interactive Auto-Configurator & Connection Auditor for AI Coding Harnesses** (Claude Code, OpenAI Codex CLI, Hermes Agent, OpenClaw, OpenCode, and Oh My Pi `omp`) connecting to [GhostCLI](https://ghostcli.cloud).
+> **Interactive Auto-Configurator & Connection Auditor for AI Coding Harnesses** (Claude Code, OpenAI Codex CLI, Hermes Agent, OpenClaw, OpenCode, Oh My Pi `omp`, Visual Studio Code, Claude Desktop, and Open Design) connecting to [GhostCLI](https://ghostcli.cloud).
 
 [![Node.js Version](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-green.svg)](https://nodejs.org/)
 [![Dependencies](https://img.shields.io/badge/dependencies-0%20(zero)-brightgreen.svg)](package.json)
@@ -44,6 +44,7 @@ However, manually configuring each AI coding assistant requires editing fragment
   * **Oh My Pi (`omp`)** (`~/.omp/config.json`)
   * **Visual Studio Code** (`Code/User/settings.json`)
   * **Claude Desktop App** (`Claude/claude_desktop_config.json` & `Claude-3p/`)
+  * **Open Design** (`Open Design/namespaces/*/data/app-config.json` & `~/.config/mms/model-routes.json`)
 * 🛡️ **Non-Destructive Backups**: Automatically creates `.bak` safety backups before updating any configuration file.
 * 💾 **Dual Persistence (Config + Environment)**: By default, updates both tool-specific configuration files AND system-wide user environment variables (Windows User Registry `HKCU\Environment` or macOS/Linux `~/.zshrc` / `~/.bashrc`).
 * 🎛️ **Intelligent Management Hub**: Once configured, running `gc-helper` or `gc` never re-prompts for URL/API key—it presents an instant status check by default on Enter, with 1-second harness re-sync.
@@ -143,7 +144,7 @@ Step 5: Persistence Mode
 | **`--url <url>`** | String | `https://ghostcli.cloud` | Custom Base URL. |
 | **`--key <key>`** | String | Auto-detected | GhostCLI API key (`gcli_...`). |
 | **`--mode <mode>`** | String | `both` | Persistence target: `both`, `config` (files only), or `env` (environment only). |
-| **`--tools <list>`** | String | Auto | Comma-separated list: `claude`, `codex`, `hermes`, `openclaw`, `opencode`, `omp`, or `all`. |
+| **`--tools <list>`** | String | Auto | Comma-separated list: `claude`, `codex`, `hermes`, `openclaw`, `opencode`, `omp`, `vscode`, `desktop`, `opendesign`, or `all`. |
 | **`--reconfigure`, `--force`** | Flag | `false` | Force re-prompting for Base URL and API key even when already configured. |
 | **`-y, --yes`** | Flag | `false` | Non-interactive mode (uses defaults without prompting). |
 | **`--dry-run`** | Flag | `false` | Simulates actions and prints planned changes without writing to disk. |
@@ -162,6 +163,7 @@ Step 5: Persistence Mode
 | **Oh My Pi (`omp`)** | `~/.omp/config.json` | `models.provider = "openai-compatible"`<br>`models.base_url = "https://ghostcli.cloud/v1"` |
 | **Visual Studio Code** | `Code/User/settings.json` | `terminal.integrated.env.<os>.ANTHROPIC_BASE_URL = "https://ghostcli.cloud"`<br>`terminal.integrated.env.<os>.OPENAI_BASE_URL = "https://ghostcli.cloud/v1"`<br>`terminal.integrated.env.<os>.GHOSTCLI_API_KEY = "gcli_..."` |
 | **Claude Desktop App** | `Claude/claude_desktop_config.json`<br>& `Claude-3p/` | `deploymentMode = "3p"`<br>`inferenceGatewayBaseUrl = "https://ghostcli.cloud"`<br>`inferenceGatewayAuthScheme = "bearer"`<br>*(Preserves existing `mcpServers`)* |
+| **Open Design** | `%APPDATA%\Open Design\namespaces\*\data\app-config.json`<br>& `~/.config/mms/model-routes.json` | `agentId = "claude"`<br>`agentModels.claude.model = "claude-opus-5-5"`<br>`agentModels.codex.model = "gpt-6-astra"`<br>`agentCliEnv.claude.MMD_MODEL_ROUTES_FILE`<br>`agentCliEnv.codex.OPENAI_BASE_URL`<br>*(Simultaneous Claude + Astra routing)* |
 | **System Environment** | Windows Registry (HKCU) / `~/.zshrc` / `~/.bashrc` | `ANTHROPIC_BASE_URL`<br>`OPENAI_BASE_URL`<br>`GHOSTCLI_API_KEY`<br>`ANTHROPIC_API_KEY` |
 
 ---

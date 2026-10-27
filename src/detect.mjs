@@ -116,7 +116,43 @@ export function getToolPaths() {
         : (process.platform === 'darwin'
             ? ['/Applications/Claude.app']
             : ['/usr/bin/claude-desktop', '/opt/Claude/claude-desktop'])
-    }
+    },
+    opendesign: (() => {
+      const baseDir = isWin
+        ? path.join(appData, 'Open Design')
+        : (process.platform === 'darwin'
+            ? path.join(userHome, 'Library', 'Application Support', 'Open Design')
+            : path.join(configHome, 'Open Design'));
+      const defaultNs = isWin
+        ? 'release-stable-win'
+        : (process.platform === 'darwin' ? 'release-stable-mac' : 'release-stable-linux');
+      let resolvedConfig = path.join(baseDir, 'namespaces', defaultNs, 'data', 'app-config.json');
+      const nsRoot = path.join(baseDir, 'namespaces');
+      if (!fs.existsSync(resolvedConfig) && fs.existsSync(nsRoot)) {
+        try {
+          for (const entry of fs.readdirSync(nsRoot)) {
+            const candidate = path.join(nsRoot, entry, 'data', 'app-config.json');
+            if (fs.existsSync(candidate)) {
+              resolvedConfig = candidate;
+              break;
+            }
+          }
+        } catch {}
+      }
+      return {
+        config: resolvedConfig,
+        dir: baseDir,
+        candidateBins: isWin
+          ? [
+              path.join(localAppData, 'Programs', 'Open Design', 'Open Design.exe'),
+              path.join(localAppData, 'Open Design', 'Open Design.exe'),
+              path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Open Design', 'Open Design.exe')
+            ]
+          : (process.platform === 'darwin'
+              ? ['/Applications/Open Design.app/Contents/MacOS/Open Design', '/Applications/Open Design.app']
+              : ['/usr/bin/open-design', '/opt/Open Design/open-design'])
+      };
+    })()
   };
 }
 
@@ -229,6 +265,30 @@ export function inspectHarnessContext(id, configPath) {
         }
       }
       return { ok: false, detail: '1M maxContextWindow not set in 3P profile' };
+    }
+
+    if (id === 'opendesign') {
+      const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      const claudeUrl = cfg.agentCliEnv?.claude?.ANTHROPIC_BASE_URL;
+      const codexUrl = cfg.agentCliEnv?.codex?.OPENAI_BASE_URL;
+      const routesPath = cfg.agentCliEnv?.claude?.MMD_MODEL_ROUTES_FILE || path.join(userHome, '.config', 'mms', 'model-routes.json');
+      if (!claudeUrl || !codexUrl) {
+        return { ok: false, detail: 'Dual-harness claude/codex endpoints not configured in app-config.json' };
+      }
+      if (!fs.existsSync(routesPath)) {
+        return { ok: false, detail: 'MMD model-routes.json file missing' };
+      }
+      const routesDoc = JSON.parse(fs.readFileSync(routesPath, 'utf8'));
+      const routes = routesDoc.routes || {};
+      const hasClaude = Boolean(routes['claude-opus-5-5'] && routes['claude-sonnet-5']);
+      const hasAstra = Boolean(routes['gpt-6-astra']);
+      if (!hasClaude || !hasAstra) {
+        return { ok: false, detail: 'Simultaneous Claude + Astra routes missing from model-routes.json' };
+      }
+      return {
+        ok: true,
+        detail: '1M context via Claude Code & Codex CLI (Claude + Astra simultaneous routes active)'
+      };
     }
   } catch (err) {
     return { ok: false, detail: `Failed to inspect context (${err.message})` };
@@ -465,6 +525,34 @@ export function detectHarnesses() {
     configPath: toolPaths.desktop.config,
     configExists: desktop1pExists,
     currentEndpoint: desktopEndpoint
+  };
+
+  // 9. Open Design
+  let openDesignBin = checkBinary('open-design');
+  if (!openDesignBin) {
+    for (const b of toolPaths.opendesign.candidateBins) {
+      if (fs.existsSync(b)) { openDesignBin = b; break; }
+    }
+  }
+  const openDesignConfigExists = fs.existsSync(toolPaths.opendesign.config);
+  let openDesignEndpoint = null;
+  if (openDesignConfigExists) {
+    try {
+      const cfg = JSON.parse(fs.readFileSync(toolPaths.opendesign.config, 'utf8'));
+      openDesignEndpoint =
+        cfg.agentCliEnv?.claude?.ANTHROPIC_BASE_URL ||
+        cfg.agentCliEnv?.codex?.OPENAI_BASE_URL ||
+        null;
+    } catch {}
+  }
+  results.opendesign = {
+    id: 'opendesign',
+    name: 'Open Design',
+    installed: Boolean(openDesignBin || openDesignConfigExists || fs.existsSync(toolPaths.opendesign.dir)),
+    bin: openDesignBin,
+    configPath: toolPaths.opendesign.config,
+    configExists: openDesignConfigExists,
+    currentEndpoint: openDesignEndpoint
   };
 
   for (const [id, h] of Object.entries(results)) {

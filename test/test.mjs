@@ -17,6 +17,7 @@ import { configureOpenCode } from '../src/configurators/opencode.mjs';
 import { configureOmp } from '../src/configurators/omp.mjs';
 import { configureVsCode } from '../src/configurators/vscode.mjs';
 import { configureClaudeDesktop } from '../src/configurators/desktop.mjs';
+import { configureOpenDesign } from '../src/configurators/opendesign.mjs';
 
 let passed = 0;
 let failed = 0;
@@ -332,6 +333,53 @@ trust_level = "trusted"
   assert(!hermesContent.includes('glm-5.3'), 'Hermes excludes offline z-ai/glm-5.3');
   assert(!ocData.providers.ghostcli.models['z-ai/glm-5.3'], 'OpenCode excludes offline z-ai/glm-5.3');
   assert(!profileData.inferenceModels.includes('z-ai/glm-5.3'), 'Claude Desktop 3P excludes offline z-ai/glm-5.3');
+
+  // Open Design (Dual-Harness app-config.json + Simultaneous Claude & Astra model-routes.json)
+  const openDesignFile = path.join(tmpDir, 'Open Design', 'namespaces', 'release-stable-win', 'data', 'app-config.json');
+  const mmdRoutesFile = path.join(tmpDir, '.config', 'mms', 'model-routes.json');
+  fs.mkdirSync(path.dirname(openDesignFile), { recursive: true });
+  fs.writeFileSync(openDesignFile, JSON.stringify({
+    agentId: 'amr',
+    analyticsEnabled: false,
+    notificationSound: 'staplebops-01',
+    Followed: 'system'
+  }, null, 2));
+
+  const odRes = configureOpenDesign(openDesignFile, testUrls, testKey, false, { routesPath: mmdRoutesFile });
+  assert(fs.existsSync(odRes.backup), 'Open Design app-config.json backup created');
+  assert(fs.existsSync(mmdRoutesFile), 'Open Design MMD model-routes.json created');
+
+  const odCfg = JSON.parse(fs.readFileSync(openDesignFile, 'utf8'));
+  assert(odCfg.agentId === 'claude', 'Open Design promotes default amr agentId to claude');
+  assert(odCfg.analyticsEnabled === false && odCfg.Followed === 'system', 'Open Design preserves existing user preferences');
+  assert(odCfg.agentModels?.claude?.model === 'claude-opus-5-5', 'Open Design sets default claude model to claude-opus-5-5');
+  assert(odCfg.agentModels?.codex?.model === 'gpt-6-astra' && odCfg.agentModels?.codex?.reasoning === 'high', 'Open Design sets default codex model to gpt-6-astra (high reasoning)');
+  assert(odCfg.agentCliEnv?.claude?.ANTHROPIC_BASE_URL === 'https://ghostcli.cloud', 'Open Design sets claude ANTHROPIC_BASE_URL');
+  assert(odCfg.agentCliEnv?.claude?.ANTHROPIC_AUTH_TOKEN === testKey, 'Open Design sets claude ANTHROPIC_AUTH_TOKEN');
+  assert(odCfg.agentCliEnv?.claude?.ANTHROPIC_API_KEY === testKey, 'Open Design sets claude ANTHROPIC_API_KEY');
+  assert(odCfg.agentCliEnv?.claude?.MMD_MODEL_ROUTES_FILE === mmdRoutesFile, 'Open Design links MMD_MODEL_ROUTES_FILE in claude env');
+  assert(odCfg.agentCliEnv?.codex?.OPENAI_BASE_URL === 'https://ghostcli.cloud/v1', 'Open Design sets codex OPENAI_BASE_URL');
+  assert(odCfg.agentCliEnv?.codex?.OPENAI_API_KEY === testKey && odCfg.agentCliEnv?.codex?.CODEX_API_KEY === testKey, 'Open Design sets codex API keys');
+  assert(odCfg.agentCliEnvIntent?.claude?.apiKeyOverride === true && odCfg.agentCliEnvIntent?.codex?.apiKeyOverride === true, 'Open Design sets agentCliEnvIntent apiKeyOverride for claude and codex');
+
+  // Strict schema compliance check against Open Design chunk-TYPDA7AG.mjs validator rules
+  const allowedClaudeEnvKeys = new Set(['CLAUDE_CONFIG_DIR', 'CLAUDE_BIN', 'ANTHROPIC_BASE_URL', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'MMD_MODEL_ROUTES_FILE']);
+  const allowedCodexEnvKeys = new Set(['CODEX_HOME', 'CODEX_BIN', 'OPENAI_BASE_URL', 'CODEX_API_KEY', 'OPENAI_API_KEY']);
+  const allowedModelKeys = new Set(['model', 'reasoning', 'serviceTier']);
+  assert(Object.keys(odCfg.agentCliEnv.claude).every(k => allowedClaudeEnvKeys.has(k)), 'Open Design claude env contains only schema-allowed keys');
+  assert(Object.keys(odCfg.agentCliEnv.codex).every(k => allowedCodexEnvKeys.has(k)), 'Open Design codex env contains only schema-allowed keys');
+  assert(Object.keys(odCfg.agentModels.claude).every(k => allowedModelKeys.has(k)), 'Open Design claude agentModels contains only schema-allowed keys');
+  assert(Object.keys(odCfg.agentModels.codex).every(k => allowedModelKeys.has(k)), 'Open Design codex agentModels contains only schema-allowed keys');
+
+  const routesCfg = JSON.parse(fs.readFileSync(mmdRoutesFile, 'utf8'));
+  assert(routesCfg.routes?.['claude-opus-5-5']?.primary?.anthropic_base_url === 'https://ghostcli.cloud', 'MMD routes includes claude-opus-5-5');
+  assert(routesCfg.routes?.['claude-sonnet-5']?.primary?.anthropic_base_url === 'https://ghostcli.cloud', 'MMD routes includes claude-sonnet-5');
+  assert(routesCfg.routes?.['claude-fable-5.1']?.primary?.anthropic_base_url === 'https://ghostcli.cloud', 'MMD routes includes claude-fable-5.1');
+  assert(routesCfg.routes?.['gpt-6-astra']?.primary?.anthropic_base_url === 'https://ghostcli.cloud', 'MMD routes includes gpt-6-astra simultaneously with Claude models');
+  assert(!routesCfg.routes?.['z-ai/glm-5.3'], 'MMD routes excludes offline z-ai/glm-5.3');
+
+  const odCtxCheck = inspectHarnessContext('opendesign', openDesignFile);
+  assert(odCtxCheck.ok === true && odCtxCheck.detail.includes('Claude + Astra'), 'inspectHarnessContext confirms Open Design simultaneous Claude + Astra routing');
 
 } finally {
   // Cleanup tmpDir
