@@ -16,22 +16,32 @@ export function configureHermes(configPath, urls, apiKey, dryRun = false, models
   }
 
   // Update or append Hermes provider config
-  const modelEntries = (Array.isArray(models) && models.length > 0)
-    ? models.map(m => {
-        const id = m.id || m.slug || m;
-        const ctx = m.contextWindow || m.context_window_tokens || 1000000;
-        return `      ${id}:\n        context_length: ${ctx}`;
-      }).join('\n')
-    : `      claude-opus-5-5:
-        context_length: 1000000
-      claude-sonnet-5:
-        context_length: 1000000
-      claude-fable-5.1:
-        context_length: 1000000
-      gpt-6-astra:
-        context_length: 1000000`;
+  const uniqueModelEntries = [];
+  const seenIds = new Set();
+  const rawList = (Array.isArray(models) && models.length > 0)
+    ? models
+    : [
+        { id: 'claude-opus-5-5', contextWindow: 1000000 },
+        { id: 'claude-sonnet-5', contextWindow: 1000000 },
+        { id: 'claude-fable-5.1', contextWindow: 1000000 },
+        { id: 'gpt-6-astra', contextWindow: 1000000 }
+      ];
 
-  const modelsBlock = `    models:\n${modelEntries}`;
+  for (const m of rawList) {
+    const baseId = (m.id || m.slug || m).replace(/\[1m\]$/i, '');
+    const ctx = m.contextWindow || m.context_window_tokens || 1000000;
+    if (!seenIds.has(baseId)) {
+      seenIds.add(baseId);
+      uniqueModelEntries.push(`      ${baseId}:\n        context_length: ${ctx}`);
+    }
+    const suffixedId = `${baseId}[1m]`;
+    if (!seenIds.has(suffixedId)) {
+      seenIds.add(suffixedId);
+      uniqueModelEntries.push(`      ${suffixedId}:\n        context_length: ${ctx}`);
+    }
+  }
+
+  const modelsBlock = `    models:\n${uniqueModelEntries.join('\n')}`;
 
   const ghostBlock = `
 # GhostCLI Provider configuration added by gc-helper
@@ -53,6 +63,9 @@ ${modelsBlock}
     if (!content.includes('ghostcli:')) {
       content = content.replace('providers:', `providers:\n  ghostcli:\n    base_url: "${urls.openaiUrl}"\n    api_key: "${apiKey}"\n${modelsBlock}`);
     } else {
+      // Ensure base_url under ghostcli uses openaiUrl (https://ghostcli.cloud/v1)
+      content = content.replace(/(ghostcli:\s*\r?\n(?:[ \t]+[^\r\n]+\r?\n)*?[ \t]*base_url:\s*)[^\r\n]+/m, `$1"${urls.openaiUrl}"`);
+
       // Upgrade any lower context_length values to 1000000
       content = content.replace(/^([ \t]*context_length:\s*)(\d+)/gm, (match, prefix, val) => {
         const num = Number(val);
@@ -71,6 +84,18 @@ ${modelsBlock}
     // Update default model preserving leading spaces/tabs only
     if (/^[ \t]*default:/m.test(content)) {
       content = content.replace(/^([ \t]*)default:.*$/m, '$1default: "ghostcli/claude-opus-5-5"');
+    }
+    // Update root model section base_url if present and pointing to ghostcli
+    content = content.replace(/(^[ \t]*model:\s*\r?\n(?:[ \t]+[^\r\n]+\r?\n)*?[ \t]*base_url:\s*)[^\r\n]+/m, `$1"${urls.openaiUrl}"`);
+
+    // Ensure model aliases include glm and glm-flash if model_aliases section exists
+    if (content.includes('model_aliases:')) {
+      if (!content.includes('glm:')) {
+        content = content.replace('model_aliases:', 'model_aliases:\n  glm:\n    model: "z-ai/glm-5.3[1m]"\n    provider: "ghostcli"');
+      }
+      if (!content.includes('glm-flash:')) {
+        content = content.replace('model_aliases:', 'model_aliases:\n  glm-flash:\n    model: "z-ai/glm-5.3-flash[1m]"\n    provider: "ghostcli"');
+      }
     }
   } else {
     content = content.trim() + '\n' + ghostBlock.trim() + '\n';
