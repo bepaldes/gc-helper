@@ -1,6 +1,6 @@
 {
   "name": "gc-helper",
-  "version": "1.1.0",
+  "version": "1.0.0",
   "description": "Zero-dependency auto-configurator, connection auditor, and status hub for AI coding harnesses (Claude Code, Codex, Hermes, VS Code, Claude Desktop, OpenClaw, OpenCode, OMP, Open Design).",
   "type": "module",
   "main": "./src/cli.mjs",

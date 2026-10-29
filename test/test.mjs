@@ -443,7 +443,7 @@ console.log('\n[Test Suite 5: Configured Detection & Management Hub]');
 // 6. Version & Update Notifier Tests
 console.log('\n[Test Suite 6: Version & Update Notifier]');
 {
-  assert(VERSION === '1.1.0', 'Package version is 1.1.0');
+  assert(VERSION === '1.0.0', 'Package version is 1.0.0');
   assert(PACKAGE_NAME === 'gc-helper', 'Package name is gc-helper');
 
   const pVShort = parseArgs(['-v']);
