@@ -638,3 +638,50 @@ export function isConfigured(harnesses = null, existingKey = undefined, env = pr
   return false;
 }
 
+/**
+ * Detects Heimdall Agent installation and its models catalog config.
+ */
+export function detectHeimdall() {
+  const candidates = [
+    process.env.HEIMDALL_DIR,
+    process.env.HEIMDALL_HOME,
+    'C:\\Apps\\heimdall-agent',
+    path.join(userHome, '.heimdall'),
+    path.join(userHome, 'AppData', 'Local', 'heimdall'),
+    path.join(userHome, 'heimdall-agent'),
+    path.join(process.cwd(), 'heimdall-agent'),
+    path.join(path.dirname(process.cwd()), 'heimdall-agent')
+  ].filter(Boolean);
+
+  for (const dir of candidates) {
+    const modelsPath = path.join(dir, 'config', 'models.json');
+    if (fs.existsSync(modelsPath)) {
+      return {
+        installed: true,
+        dir,
+        modelsPath
+      };
+    }
+  }
+
+  const bin = checkBinary('heimdall');
+  if (bin) {
+    if (fs.existsSync(bin)) {
+      try {
+        const content = fs.readFileSync(bin, 'utf8');
+        const match = content.match(/node\s+"([^"]+)[\\\/]setup\.mjs"/i);
+        if (match && match[1]) {
+          const modelsPath = path.join(match[1], 'config', 'models.json');
+          if (fs.existsSync(modelsPath)) {
+            return { installed: true, dir: match[1], modelsPath, bin };
+          }
+        }
+      } catch {}
+    }
+    return { installed: true, bin, dir: null, modelsPath: null };
+  }
+
+  return { installed: false, dir: null, modelsPath: null, bin: null };
+}
+
+

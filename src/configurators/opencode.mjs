@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export function configureOpenCode(configPath, urls, apiKey, dryRun = false) {
+export function configureOpenCode(configPath, urls, apiKey, dryRun = false, models = null) {
   const dir = path.dirname(configPath);
   if (!fs.existsSync(dir) && !dryRun) {
     fs.mkdirSync(dir, { recursive: true });
@@ -19,6 +19,21 @@ export function configureOpenCode(configPath, urls, apiKey, dryRun = false) {
     }
   }
 
+  const modelsMap = {};
+  if (Array.isArray(models) && models.length > 0) {
+    for (const m of models) {
+      const id = m.id || m.slug || m;
+      const ctx = Math.max(Number(m.contextWindow) || Number(m.context_window_tokens) || 0, 1048576);
+      const maxOut = Math.max(Number(m.maxOutputTokens) || 0, 131072);
+      modelsMap[id] = { context_window: ctx, max_tokens: maxOut };
+    }
+  } else {
+    modelsMap['claude-opus-5-5'] = { context_window: 1048576, max_tokens: 131072 };
+    modelsMap['claude-sonnet-5'] = { context_window: 1048576, max_tokens: 131072 };
+    modelsMap['claude-fable-5.1'] = { context_window: 1048576, max_tokens: 131072 };
+    modelsMap['gpt-6-astra'] = { context_window: 1048576, max_tokens: 131072 };
+  }
+
   if (!config.providers) config.providers = {};
   config.providers.ghostcli = {
     type: 'openai',
@@ -26,12 +41,7 @@ export function configureOpenCode(configPath, urls, apiKey, dryRun = false) {
     api_key: apiKey,
     context_window: 1048576,
     max_tokens: 131072,
-    models: {
-      'claude-opus-5-5': { context_window: 1048576, max_tokens: 131072 },
-      'claude-sonnet-5': { context_window: 1048576, max_tokens: 131072 },
-      'claude-fable-5.1': { context_window: 1048576, max_tokens: 131072 },
-      'gpt-6-astra': { context_window: 1048576, max_tokens: 131072 }
-    }
+    models: modelsMap
   };
   config.default_provider = 'ghostcli';
 

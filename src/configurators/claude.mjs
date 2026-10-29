@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export function configureClaude(configPath, urls, apiKey, dryRun = false) {
+export function configureClaude(configPath, urls, apiKey, dryRun = false, models = null) {
   const dir = path.dirname(configPath);
   if (!fs.existsSync(dir) && !dryRun) {
     fs.mkdirSync(dir, { recursive: true });
@@ -45,8 +45,17 @@ export function configureClaude(configPath, urls, apiKey, dryRun = false) {
     delete settings.modelSettings['claude-fable-5-1'];
   }
 
-  delete settings.modelSettings['z-ai/glm-5.3'];
-  delete settings.modelSettings['glm-5.3'];
+  if (Array.isArray(models) && models.length > 0) {
+    for (const m of models) {
+      const id = m.id || m.slug || m;
+      if (!settings.modelSettings[id]) {
+        settings.modelSettings[id] = { effortLevel: 'medium' };
+      }
+    }
+  } else {
+    delete settings.modelSettings['z-ai/glm-5.3'];
+    delete settings.modelSettings['glm-5.3'];
+  }
 
   if (!settings.modelSettings['claude-sonnet-5']) {
     settings.modelSettings['claude-sonnet-5'] = { effortLevel: 'medium' };

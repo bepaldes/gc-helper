@@ -25,12 +25,19 @@ export function normalizeUrls(rawUrl = 'https://ghostcli.cloud') {
   };
 }
 
-export function isOfflineModel(modelId = '') {
+export function isOfflineModel(modelId = '', offlineFilter = null) {
   const normalized = String(modelId).trim().toLowerCase();
-  return normalized.includes('glm-5.3');
+  if (Array.isArray(offlineFilter) || offlineFilter instanceof Set) {
+    const set = offlineFilter instanceof Set ? offlineFilter : new Set(offlineFilter.map(s => String(s).toLowerCase()));
+    return set.has(normalized);
+  }
+  if (typeof offlineFilter === 'function') {
+    return Boolean(offlineFilter(modelId));
+  }
+  return false;
 }
 
-export function extractModelSpecs(data = {}) {
+export function extractModelSpecs(data = {}, offlineFilter = null) {
   const combined = [
     ...(Array.isArray(data.data) ? data.data : []),
     ...(Array.isArray(data.models) ? data.models : [])
@@ -42,7 +49,7 @@ export function extractModelSpecs(data = {}) {
     const rawId = m.id || m.slug || m.model || m.name;
     if (!rawId || typeof rawId !== 'string') continue;
     const id = rawId.replace(/\[1m\]$/i, '');
-    if (isOfflineModel(id)) continue;
+    if (isOfflineModel(id, offlineFilter)) continue;
 
     const candidateContext = Math.max(
       Number(m.context_window) || 0,

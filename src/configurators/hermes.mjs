@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export function configureHermes(configPath, urls, apiKey, dryRun = false) {
+export function configureHermes(configPath, urls, apiKey, dryRun = false, models = null) {
   const dir = path.dirname(configPath);
   if (!fs.existsSync(dir) && !dryRun) {
     fs.mkdirSync(dir, { recursive: true });
@@ -16,8 +16,13 @@ export function configureHermes(configPath, urls, apiKey, dryRun = false) {
   }
 
   // Update or append Hermes provider config
-  const modelsBlock = `    models:
-      claude-opus-5-5:
+  const modelEntries = (Array.isArray(models) && models.length > 0)
+    ? models.map(m => {
+        const id = m.id || m.slug || m;
+        const ctx = m.contextWindow || m.context_window_tokens || 1000000;
+        return `      ${id}:\n        context_length: ${ctx}`;
+      }).join('\n')
+    : `      claude-opus-5-5:
         context_length: 1000000
       claude-sonnet-5:
         context_length: 1000000
@@ -25,6 +30,8 @@ export function configureHermes(configPath, urls, apiKey, dryRun = false) {
         context_length: 1000000
       gpt-6-astra:
         context_length: 1000000`;
+
+  const modelsBlock = `    models:\n${modelEntries}`;
 
   const ghostBlock = `
 # GhostCLI Provider configuration added by gc-helper
@@ -51,7 +58,13 @@ ${modelsBlock}
         const num = Number(val);
         return num < 1000000 ? `${prefix}1000000` : match;
       });
-      if (!/^[ \t]*context_length:/m.test(content)) {
+      if (Array.isArray(models) && models.length > 0) {
+        if (/^[ \t]*models:\s*$/m.test(content)) {
+          content = content.replace(/^([ \t]*models:\s*\r?\n)(?:[ \t]+[^\r\n]+\r?\n)*/m, `${modelsBlock}\n`);
+        } else {
+          content = content.replace(/^([ \t]*ghostcli:.*)$/m, `$1\n${modelsBlock}`);
+        }
+      } else if (!/^[ \t]*context_length:/m.test(content)) {
         content = content.replace(/^([ \t]*ghostcli:.*)$/m, `$1\n${modelsBlock}`);
       }
     }

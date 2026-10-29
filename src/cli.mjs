@@ -16,6 +16,8 @@ import { configureVsCode } from './configurators/vscode.mjs';
 import { configureClaudeDesktop } from './configurators/desktop.mjs';
 import { configureOpenDesign } from './configurators/opendesign.mjs';
 import { configureEnvironmentVariables } from './env.mjs';
+import { VERSION } from './version.mjs';
+import { runSyncModels, readModelsCache } from './models.mjs';
 
 const colors = {
   reset: '\x1b[0m',
@@ -36,9 +38,13 @@ ${colors.cyan}${colors.bold}  ██████╗  ██████╗      
  ██║   ██║██║     ╚════╝██╔══██║██╔══╝  ██║     ██╔═══╝ ██╔══╝  ██╔══██╗
  ╚██████╔╝╚██████╗      ██║  ██║███████╗███████╗██║     ███████╗██║  ██║
   ╚═════╝  ╚═════╝      ╚═╝  ╚═╝╚══════╝╚══════╝╚═╝     ╚══════╝╚═╝  ╚═╝${colors.reset}
-${colors.dim} GC-Helper — Multi-Harness Auto-Configurator & Connection Auditor${colors.reset}
+${colors.dim} GC-Helper v${VERSION} — Multi-Harness Auto-Configurator & Connection Auditor${colors.reset}
 ${colors.dim} (Independent community helper — not affiliated with GhostCLI official)${colors.reset}
 `);
+}
+
+export function printVersion() {
+  console.log(`gc-helper v${VERSION}`);
 }
 
 export function parseArgs(args) {
@@ -51,7 +57,9 @@ export function parseArgs(args) {
     yes: false,
     dryRun: false,
     help: false,
+    version: false,
     reconfigure: false,
+    heimdall: true,
     hasArgs: args.length > 0
   };
 
@@ -62,12 +70,18 @@ export function parseArgs(args) {
       options.command = 'audit';
     } else if (arg === 'sync' || arg === '--sync') {
       options.command = 'sync';
+    } else if (arg === 'sync-models' || arg === '--sync-models' || arg === 'syncmodels') {
+      options.command = 'sync-models';
     } else if (arg === 'setup' || arg === '--setup') {
       options.command = 'setup';
     } else if (arg === '--reconfigure' || arg === 'reconfigure' || arg === '--force' || arg === '-f') {
       options.reconfigure = true;
+    } else if (arg === '--no-heimdall') {
+      options.heimdall = false;
     } else if (arg === 'help' || arg === '--help' || arg === '-h') {
       options.help = true;
+    } else if (arg === 'version' || arg === '--version' || arg === '-v') {
+      options.version = true;
     } else if (arg === '--url' && args[i + 1]) {
       options.url = args[++i];
     } else if (arg === '--key' && args[i + 1]) {
@@ -99,10 +113,12 @@ ${colors.bold}COMMANDS:${colors.reset}
   ${colors.green}setup${colors.reset}       Interactive configuration wizard (default)
   ${colors.green}status${colors.reset}      Verify connection and inspect harness configs (alias: audit)
   ${colors.green}sync${colors.reset}        Fast re-sync detected harnesses using existing credentials
+  ${colors.green}sync-models${colors.reset} Discover, test, and sync live models across AI harnesses & Heimdall
   ${colors.green}audit${colors.reset}       Deep ecosystem connection & model inspection
   ${colors.green}help${colors.reset}        Show this manual
 
 ${colors.bold}OPTIONS:${colors.reset}
+  ${colors.yellow}-v, --version${colors.reset}          Show version number
   ${colors.yellow}--url <url>${colors.reset}          GhostCLI Base URL [default: https://ghostcli.cloud]
   ${colors.yellow}--key <key>${colors.reset}          GhostCLI API Key (gcli_...)
   ${colors.yellow}--mode <mode>${colors.reset}        Persistence mode: ${colors.bold}both${colors.reset} (default), ${colors.bold}config${colors.reset}, or ${colors.bold}env${colors.reset}
@@ -123,6 +139,7 @@ export async function runAudit(options = {}) {
   const urls = normalizeUrls(detectedUrl);
 
   console.log(`${colors.bold}Active Configuration Targets:${colors.reset}`);
+  console.log(`  GC-Helper: v${VERSION}`);
   console.log(`  Base URL:  ${colors.cyan}${urls.baseUrl}${colors.reset}`);
   console.log(`  Claude:    ${colors.cyan}${urls.claudeUrl}${colors.reset}`);
   console.log(`  OpenAI v1: ${colors.cyan}${urls.openaiUrl}${colors.reset}`);
@@ -167,7 +184,7 @@ export async function runAudit(options = {}) {
   console.log('');
 }
 
-export function applyDeployment(selectedTools, harnesses, urls, apiKey, mode = 'both', dryRun = false) {
+export function applyDeployment(selectedTools, harnesses, urls, apiKey, mode = 'both', dryRun = false, models = null) {
   console.log(`\n${colors.bold}${colors.cyan}=== Applying Configurations ${dryRun ? '(DRY RUN)' : ''} ===${colors.reset}\n`);
 
   if (mode === 'both' || mode === 'env') {
@@ -179,15 +196,15 @@ export function applyDeployment(selectedTools, harnesses, urls, apiKey, mode = '
 
   if (mode === 'both' || mode === 'config') {
     const toolMap = {
-      claude: { name: 'Claude Code', fn: configureClaude },
-      codex: { name: 'OpenAI Codex CLI', fn: configureCodex },
-      hermes: { name: 'Hermes Agent', fn: configureHermes },
+      claude: { name: 'Claude Code', fn: (cp, u, k, d) => configureClaude(cp, u, k, d, models) },
+      codex: { name: 'OpenAI Codex CLI', fn: (cp, u, k, d) => configureCodex(cp, u, k, d, null, models) },
+      hermes: { name: 'Hermes Agent', fn: (cp, u, k, d) => configureHermes(cp, u, k, d, models) },
       openclaw: { name: 'OpenClaw', fn: configureOpenClaw },
-      opencode: { name: 'OpenCode', fn: configureOpenCode },
+      opencode: { name: 'OpenCode', fn: (cp, u, k, d) => configureOpenCode(cp, u, k, d, models) },
       omp: { name: 'Oh My Pi (omp)', fn: configureOmp },
       vscode: { name: 'Visual Studio Code', fn: configureVsCode },
-      desktop: { name: 'Claude Desktop App', fn: configureClaudeDesktop },
-      opendesign: { name: 'Open Design', fn: configureOpenDesign }
+      desktop: { name: 'Claude Desktop App', fn: (cp, u, k, d) => configureClaudeDesktop(cp, u, k, d, null, models) },
+      opendesign: { name: 'Open Design', fn: (cp, u, k, d) => configureOpenDesign(cp, u, k, d, {}, models) }
     };
 
     for (const tId of selectedTools) {
@@ -240,7 +257,10 @@ export async function runSync(options = {}) {
     return;
   }
 
-  applyDeployment(selectedTools, harnesses, urls, detectedKey, options.mode || 'both', options.dryRun);
+  const cached = readModelsCache();
+  const models = (cached && Array.isArray(cached.models)) ? cached.models : null;
+
+  applyDeployment(selectedTools, harnesses, urls, detectedKey, options.mode || 'both', options.dryRun, models);
 }
 
 export async function runPostInstallMenu(options = {}) {
@@ -253,10 +273,11 @@ export async function runPostInstallMenu(options = {}) {
     console.log(`What would you like to do?`);
     console.log(`  1. Connection & Harness Status [default]`);
     console.log(`  2. Re-sync All Detected Harnesses`);
-    console.log(`  3. Reconfigure URL / API Key`);
-    console.log(`  4. Exit\n`);
+    console.log(`  3. Synchronize Models from GhostCLI API`);
+    console.log(`  4. Reconfigure URL / API Key`);
+    console.log(`  5. Exit\n`);
 
-    const answer = await rl.question(`Choose an option [1-4, default: 1]: `);
+    const answer = await rl.question(`Choose an option [1-5, default: 1]: `);
     const choice = answer.trim().toLowerCase();
 
     if (choice === '1' || choice === '') {
@@ -266,8 +287,11 @@ export async function runPostInstallMenu(options = {}) {
       await runSync({ ...options, skipBanner: true });
       return 'exit';
     } else if (choice === '3') {
+      await runSyncModels({ ...options, skipBanner: true });
+      return 'exit';
+    } else if (choice === '4') {
       return 'reconfigure';
-    } else if (choice === '4' || choice === 'q' || choice === 'exit') {
+    } else if (choice === '5' || choice === 'q' || choice === 'exit') {
       console.log('Goodbye!');
       return 'exit';
     } else {
@@ -278,6 +302,8 @@ export async function runPostInstallMenu(options = {}) {
     rl.close();
   }
 }
+
+export { runSyncModels };
 
 export async function runSetup(options = {}) {
   if (options.help) {

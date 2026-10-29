@@ -43,7 +43,7 @@ export function getDefaultMmdRoutesPath(homeDir = os.homedir()) {
   return path.join(homeDir, '.config', 'mms', 'model-routes.json');
 }
 
-export function configureOpenDesign(configPath, urls, apiKey, dryRun = false, options = {}) {
+export function configureOpenDesign(configPath, urls, apiKey, dryRun = false, options = {}, models = null) {
   const routesPath = options.routesPath || getDefaultMmdRoutesPath(options.homeDir || os.homedir());
   const routesDir = path.dirname(routesPath);
 
@@ -67,11 +67,17 @@ export function configureOpenDesign(configPath, urls, apiKey, dryRun = false, op
     ? { ...existingRoutesDoc.routes }
     : {};
 
-  delete routes['z-ai/glm-5.3'];
-  delete routes['glm-5.3'];
+  if (!models) {
+    delete routes['z-ai/glm-5.3'];
+    delete routes['glm-5.3'];
+  }
+
+  const targetModelList = (Array.isArray(models) && models.length > 0)
+    ? models.map(m => m.id || m.slug || m)
+    : OPEN_DESIGN_ROUTE_MODELS;
 
   const orderedRoutes = {};
-  for (const modelId of OPEN_DESIGN_ROUTE_MODELS) {
+  for (const modelId of targetModelList) {
     orderedRoutes[modelId] = {
       ...(routes[modelId] && typeof routes[modelId] === 'object' ? routes[modelId] : {}),
       primary: {

@@ -8,7 +8,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { normalizeUrls, probeEndpoint, extractModelSpecs } from '../src/audit.mjs';
 import { parseArgs } from '../src/cli.mjs';
-import { isConfigured, detectConfiguredEndpoint, inspectHarnessContext } from '../src/detect.mjs';
+import { isConfigured, detectConfiguredEndpoint, inspectHarnessContext, detectHeimdall } from '../src/detect.mjs';
+import { resolveModelSpecs, writeModelsCache, readModelsCache, syncModelsToHeimdall, syncModelsToHarnesses, checkModelsHealth } from '../src/models.mjs';
 import { configureClaude } from '../src/configurators/claude.mjs';
 import { configureCodex } from '../src/configurators/codex.mjs';
 import { configureHermes } from '../src/configurators/hermes.mjs';
@@ -18,6 +19,8 @@ import { configureOmp } from '../src/configurators/omp.mjs';
 import { configureVsCode } from '../src/configurators/vscode.mjs';
 import { configureClaudeDesktop } from '../src/configurators/desktop.mjs';
 import { configureOpenDesign } from '../src/configurators/opendesign.mjs';
+import { VERSION, PACKAGE_NAME } from '../src/version.mjs';
+import { isNewerVersion, formatUpdateBox, readCache, writeCache, checkUpdate } from '../src/update.mjs';
 
 let passed = 0;
 let failed = 0;
@@ -318,7 +321,7 @@ trust_level = "trusted"
   const cappedCheck = inspectHarnessContext('codex', cappedCodexToml);
   assert(cappedCheck.ok === false, 'inspectHarnessContext detects capped 256K models in Codex catalog');
 
-  // extractModelSpecs resolution across data[] and models[] and filtering offline GLM 5.3
+  // extractModelSpecs resolution across data[] and models[] and filtering offline models
   const specs = extractModelSpecs({
     models: [
       { slug: 'claude-opus-5-5', display_name: 'Claude Opus 5.5', context_window: 256000, max_context_window: 256000 },
@@ -328,8 +331,16 @@ trust_level = "trusted"
       { id: 'claude-opus-5-5', display_name: 'Claude Opus 5.5', context_window: 1000000, max_input_tokens: 1000000, max_output_tokens: 128000 },
       { id: 'z-ai/glm-5.3', display_name: 'GLM 5.3', context_window: 1000000, max_input_tokens: 1000000, max_output_tokens: 128000 }
     ]
-  });
+  }, ['z-ai/glm-5.3']);
   assert(specs.length === 1 && specs[0].contextWindow === 1000000 && specs[0].maxOutputTokens === 128000, 'extractModelSpecs resolves highest context window and filters out offline z-ai/glm-5.3');
+
+  const allLiveSpecs = extractModelSpecs({
+    models: [
+      { slug: 'claude-opus-5-5', display_name: 'Claude Opus 5.5', context_window: 256000, max_context_window: 256000 },
+      { slug: 'z-ai/glm-5.3', display_name: 'GLM 5.3', context_window: 1000000, max_context_window: 1000000 }
+    ]
+  });
+  assert(allLiveSpecs.length === 2 && allLiveSpecs.some(s => s.id === 'z-ai/glm-5.3'), 'extractModelSpecs preserves active models when live');
   assert(!hermesContent.includes('glm-5.3'), 'Hermes excludes offline z-ai/glm-5.3');
   assert(!ocData.providers.ghostcli.models['z-ai/glm-5.3'], 'OpenCode excludes offline z-ai/glm-5.3');
   assert(!profileData.inferenceModels.includes('z-ai/glm-5.3'), 'Claude Desktop 3P excludes offline z-ai/glm-5.3');
@@ -427,6 +438,178 @@ console.log('\n[Test Suite 5: Configured Detection & Management Hub]');
 
   const fallbackUrl = detectConfiguredEndpoint(mockHarnessesEmpty, 'https://default.url', {});
   assert(fallbackUrl === 'https://default.url', 'detectConfiguredEndpoint falls back when none configured');
+}
+
+// 6. Version & Update Notifier Tests
+console.log('\n[Test Suite 6: Version & Update Notifier]');
+{
+  assert(VERSION === '1.0.0', 'Package version is 1.0.0');
+  assert(PACKAGE_NAME === 'gc-helper', 'Package name is gc-helper');
+
+  const pVShort = parseArgs(['-v']);
+  assert(pVShort.version === true, '-v flag sets version true');
+
+  const pVLong = parseArgs(['--version']);
+  assert(pVLong.version === true, '--version flag sets version true');
+
+  // Semver comparison
+  assert(isNewerVersion('1.0.0', '1.0.1') === true, '1.0.1 is newer than 1.0.0');
+  assert(isNewerVersion('1.0.0', '1.1.0') === true, '1.1.0 is newer than 1.0.0');
+  assert(isNewerVersion('1.0.0', '2.0.0') === true, '2.0.0 is newer than 1.0.0');
+  assert(isNewerVersion('1.0.0', '1.0.0') === false, '1.0.0 is not newer than 1.0.0');
+  assert(isNewerVersion('1.1.0', '1.0.0') === false, '1.0.0 is not newer than 1.1.0');
+  assert(isNewerVersion('2.0.0', '1.9.9') === false, '1.9.9 is not newer than 2.0.0');
+  assert(isNewerVersion('v1.0.0', 'v1.0.1') === true, 'v-prefixed semver compares accurately');
+  assert(isNewerVersion('1.0.0-rc.1', '1.0.0') === true, 'Release version is newer than prerelease');
+  assert(isNewerVersion('1.0.0', '1.0.0-rc.1') === false, 'Prerelease is not newer than release');
+  assert(isNewerVersion(null, '1.0.0') === false, 'Null current version returns false');
+  assert(isNewerVersion('1.0.0', null) === false, 'Null latest version returns false');
+
+  // Cache read/write
+  const tempCacheDir = path.join(os.tmpdir(), `gc-helper-test-${Date.now()}`);
+  const tempCacheFile = path.join(tempCacheDir, 'cache.json');
+  try {
+    writeCache(tempCacheFile, { lastChecked: 1000000, latestVersion: '1.2.0' });
+    const cached = readCache(tempCacheFile);
+    assert(cached !== null, 'Cache file written and read successfully');
+    assert(cached.latestVersion === '1.2.0', 'Cache preserves latestVersion property');
+    assert(cached.lastChecked === 1000000, 'Cache preserves lastChecked timestamp');
+  } finally {
+    if (fs.existsSync(tempCacheFile)) fs.unlinkSync(tempCacheFile);
+    if (fs.existsSync(tempCacheDir)) fs.rmdirSync(tempCacheDir);
+  }
+
+  // Update box formatting
+  const box = formatUpdateBox({ currentVersion: '1.0.0', latestVersion: '1.2.0', packageName: 'gc-helper' });
+  assert(box.includes('Update available'), 'Update box contains header text');
+  assert(box.includes('1.0.0') && box.includes('1.2.0'), 'Update box contains version transition');
+  assert(box.includes('npm install -g gc-helper'), 'Update box contains update command');
+
+  // checkUpdate with fresh cache
+  const mockCacheDir = path.join(os.tmpdir(), `gc-mock-cache-${Date.now()}`);
+  const mockCacheFile = path.join(mockCacheDir, 'cache.json');
+  try {
+    writeCache(mockCacheFile, { lastChecked: Date.now(), latestVersion: '1.5.0' });
+    const res = await checkUpdate({
+      cachePath: mockCacheFile,
+      currentVersion: '1.0.0',
+      cacheIntervalMs: 60000
+    });
+    assert(res.hasUpdate === true, 'checkUpdate detects update from fresh cache');
+    assert(res.latestVersion === '1.5.0', 'checkUpdate returns cached latest version');
+
+    // Opt-out test
+    process.env.NO_UPDATE_NOTIFIER = '1';
+    const optOutRes = await checkUpdate({ cachePath: mockCacheFile, currentVersion: '1.0.0' });
+    assert(optOutRes.hasUpdate === false, 'NO_UPDATE_NOTIFIER environment variable disables update check');
+    delete process.env.NO_UPDATE_NOTIFIER;
+  } finally {
+    if (fs.existsSync(mockCacheFile)) fs.unlinkSync(mockCacheFile);
+    if (fs.existsSync(mockCacheDir)) fs.rmdirSync(mockCacheDir);
+  }
+}
+
+// 7. Dynamic Model Synchronization & Heimdall Integration
+console.log('\n[Test Suite 7: Dynamic Model Synchronization & Heimdall Integration]');
+{
+  // 1. Argument parsing for sync-models
+  const sm1 = parseArgs(['sync-models']);
+  assert(sm1.command === 'sync-models', 'Subcommand sync-models parsed');
+  const sm2 = parseArgs(['--sync-models']);
+  assert(sm2.command === 'sync-models', 'Flag --sync-models parsed as command');
+  const sm3 = parseArgs(['syncmodels']);
+  assert(sm3.command === 'sync-models', 'Alias syncmodels parsed');
+  const sm4 = parseArgs(['sync-models', '--no-heimdall']);
+  assert(sm4.heimdall === false, '--no-heimdall flag disables Heimdall sync');
+
+  // 2. resolveModelSpecs
+  const mockRemoteModels = [
+    { slug: 'claude-opus-5-5', display_name: 'Claude Opus 5.5', context_window: 256000, max_context_window: 256000, description: 'Opus model' },
+    { slug: 'claude-opus-5-5[1m]', display_name: 'Claude Opus 5.5 (1M)', context_window: 1000000, max_context_window: 1000000 },
+    { slug: 'claude-sonnet-5', display_name: 'Claude Sonnet 5', context_window: 256000 },
+    { slug: 'claude-sonnet-5[1m]', display_name: 'Claude Sonnet 5 (1M)', context_window: 1000000 },
+    { slug: 'z-ai/glm-5.3', display_name: 'GLM 5.3', context_window: 1000000, description: 'Zhipu reasoning' },
+    { slug: 'z-ai/glm-5.3-flash', display_name: 'GLM 5.3 Flash', context_window: 1000000, description: 'Fast code' },
+    { slug: 'gpt-6-astra[1m]', display_name: 'GPT-6 Astra', context_window: 1000000, description: 'Long agentic' }
+  ];
+
+  const resolved = resolveModelSpecs(mockRemoteModels);
+  assert(resolved.length === 5, 'resolveModelSpecs deduplicates [1m] suffixes');
+  assert(resolved.every(m => m.contextWindow >= 1000000), 'All resolved models have >= 1M context');
+  assert(resolved.some(m => m.id === 'z-ai/glm-5.3'), 'resolveModelSpecs includes z-ai/glm-5.3');
+  assert(resolved.some(m => m.id === 'z-ai/glm-5.3-flash'), 'resolveModelSpecs includes z-ai/glm-5.3-flash');
+  assert(resolved.some(m => m.id === 'gpt-6-astra'), 'resolveModelSpecs includes gpt-6-astra');
+
+  // 3. Models cache read/write
+  const testCachePath = path.join(tmpDir, 'test-models.json');
+  const saved = writeModelsCache(testCachePath, { total: resolved.length, models: resolved });
+  assert(saved === true, 'writeModelsCache writes successfully');
+  const readBack = readModelsCache(testCachePath);
+  assert(readBack && readBack.total === 5 && readBack.models.length === 5, 'readModelsCache retrieves catalog');
+
+  // 4. Heimdall detection & sync
+  const mockHeimdallDir = path.join(tmpDir, 'mock-heimdall');
+  const mockHeimdallConfigDir = path.join(mockHeimdallDir, 'config');
+  fs.mkdirSync(mockHeimdallConfigDir, { recursive: true });
+  const mockHeimdallModelsFile = path.join(mockHeimdallConfigDir, 'models.json');
+  fs.writeFileSync(mockHeimdallModelsFile, JSON.stringify({
+    google: [{ id: 'gemini-4', displayName: 'Gemini 4' }],
+    custom_proxies: [],
+    ghostcli: []
+  }, null, 2));
+
+  const hSync = syncModelsToHeimdall(resolved, false, mockHeimdallDir);
+  assert(hSync.synced === true, 'syncModelsToHeimdall synchronizes catalog');
+  const updatedHModels = JSON.parse(fs.readFileSync(mockHeimdallModelsFile, 'utf8'));
+  assert(updatedHModels.google.length === 1, 'syncModelsToHeimdall preserves existing google models');
+  assert(updatedHModels.ghostcli.length === 5, 'syncModelsToHeimdall populates ghostcli models');
+  assert(updatedHModels.custom_proxies.some(m => m.id === 'z-ai/glm-5.3'), 'syncModelsToHeimdall includes z-ai/glm-5.3 in custom_proxies');
+  assert(updatedHModels.ghostcli.some(m => m.id === 'z-ai/glm-5.3-flash'), 'syncModelsToHeimdall includes z-ai/glm-5.3-flash in ghostcli');
+
+  // Verify non-existent Heimdall does not fail or throw
+  const missingHSync = syncModelsToHeimdall(resolved, false, path.join(tmpDir, 'non-existent-heimdall-dir'));
+  assert(missingHSync.synced === false && missingHSync.reason === 'Heimdall not detected', 'syncModelsToHeimdall is purely optional and skips gracefully when Heimdall not present');
+
+  // 5. Harness dynamic model synchronization
+  const harnessSyncDir = path.join(tmpDir, 'harness-sync');
+  fs.mkdirSync(harnessSyncDir, { recursive: true });
+
+  const codexSyncFile = path.join(harnessSyncDir, 'codex-config.toml');
+  const hermesSyncFile = path.join(harnessSyncDir, 'hermes-config.yaml');
+  const openCodeSyncFile = path.join(harnessSyncDir, 'opencode-config.json');
+  const claudeSyncFile = path.join(harnessSyncDir, 'claude-settings.json');
+
+  const mockHarnesses = {
+    codex: { configPath: codexSyncFile },
+    hermes: { configPath: hermesSyncFile },
+    opencode: { configPath: openCodeSyncFile },
+    claude: { configPath: claudeSyncFile }
+  };
+
+  const syncResults = syncModelsToHarnesses(resolved, mockHarnesses, testUrls, testKey, false);
+  assert(syncResults.every(r => r.ok), 'syncModelsToHarnesses updates all harnesses successfully');
+
+  // Verify Codex synced models
+  const codexCatalogFile = path.join(harnessSyncDir, 'ghostcli-models.json');
+  assert(fs.existsSync(codexCatalogFile), 'Codex ghostcli-models.json created during sync');
+  const codexCatalog = JSON.parse(fs.readFileSync(codexCatalogFile, 'utf8'));
+  assert(codexCatalog.models.some(m => m.slug === 'z-ai/glm-5.3'), 'Codex synced catalog contains z-ai/glm-5.3');
+  assert(codexCatalog.models.some(m => m.slug === 'z-ai/glm-5.3-flash'), 'Codex synced catalog contains z-ai/glm-5.3-flash');
+
+  // Verify Hermes synced models
+  const hermesYaml = fs.readFileSync(hermesSyncFile, 'utf8');
+  assert(hermesYaml.includes('z-ai/glm-5.3:'), 'Hermes synced config includes z-ai/glm-5.3');
+  assert(hermesYaml.includes('z-ai/glm-5.3-flash:'), 'Hermes synced config includes z-ai/glm-5.3-flash');
+
+  // Verify OpenCode synced models
+  const opencodeJson = JSON.parse(fs.readFileSync(openCodeSyncFile, 'utf8'));
+  assert(opencodeJson.providers?.ghostcli?.models?.['z-ai/glm-5.3'], 'OpenCode synced config includes z-ai/glm-5.3');
+  assert(opencodeJson.providers?.ghostcli?.models?.['z-ai/glm-5.3-flash'], 'OpenCode synced config includes z-ai/glm-5.3-flash');
+
+  // Verify Claude Code synced models
+  const claudeJson = JSON.parse(fs.readFileSync(claudeSyncFile, 'utf8'));
+  assert(claudeJson.modelSettings?.['z-ai/glm-5.3'], 'Claude Code synced config includes z-ai/glm-5.3');
+  assert(claudeJson.modelSettings?.['z-ai/glm-5.3-flash'], 'Claude Code synced config includes z-ai/glm-5.3-flash');
 }
 
 console.log(`\n---------------------------------------`);

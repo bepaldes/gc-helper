@@ -36,7 +36,7 @@ export function printDesktopWarning() {
   console.log(`  ${colors.dim}• Reversible at any time via generated safety backup (.bak) or by disabling Developer Mode.${colors.reset}`);
 }
 
-export function configureClaudeDesktop(configPath, urls, apiKey, dryRun = false, custom3pDir = null) {
+export function configureClaudeDesktop(configPath, urls, apiKey, dryRun = false, custom3pDir = null, models = null) {
   printDesktopWarning();
 
   const dir1p = path.dirname(configPath);
@@ -116,12 +116,14 @@ export function configureClaudeDesktop(configPath, urls, apiKey, dryRun = false,
     contextWindow: 1000000,
     maxContextWindow: 1000000,
     maxOutputTokens: 128000,
-    inferenceModels: [
-      'claude-opus-5-5',
-      'claude-sonnet-5',
-      'claude-fable-5.1',
-      'gpt-6-astra'
-    ]
+    inferenceModels: (Array.isArray(models) && models.length > 0)
+      ? models.map(m => m.id || m.slug || m)
+      : [
+          'claude-opus-5-5',
+          'claude-sonnet-5',
+          'claude-fable-5.1',
+          'gpt-6-astra'
+        ]
   };
 
   if (!dryRun) {

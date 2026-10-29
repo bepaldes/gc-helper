@@ -47,27 +47,39 @@ O **GC-Helper** é uma ferramenta de linha de comando leve, moderna e com **zero
   * **Open Design** (`Open Design/namespaces/*/data/app-config.json` e `~/.config/mms/model-routes.json`)
 * 🛡️ **Backups Não-Destrutivos**: Cria automaticamente cópias de segurança (`.bak`) antes de sobrescrever qualquer arquivo de configuração.
 * 💾 **Persistência Dupla (Arquivos + Variáveis de Ambiente)**: Por padrão, atualiza tanto os arquivos de configuração locais quanto as variáveis de ambiente persistentes do usuário (Registro do Windows `HKCU\Environment` ou arquivos `~/.zshrc` / `~/.bashrc` no macOS/Linux).
-* 🎛️ **Painel de Gerenciamento Inteligente**: Uma vez configurado, executar `gc-helper` ou `gc` não pede novamente a URL/API key—ele oferece status instantâneo por padrão ao pressionar Enter, com re-sincronização em 1 segundo.
+* 🔄 **Sincronização de Modelos e Verificação de Saúde ao Vivo**: Descobre modelos diretamente de `https://ghostcli.cloud/v1/models`, testa a resposta via ping rápido em `/v1/messages`, garante janela de contexto mínima de 1M e sincroniza os catálogos entre os coding harnesses (`~/.codex/ghostcli-models.json`, Hermes `config.yaml`, OpenCode `config.json`, Open Design, Claude Code) e com o **Heimdall Agent** (`config/models.json`).
+* 🎛️ **Painel de Gerenciamento Inteligente**: Uma vez configurado, executar `gc-helper` ou `gc` não pede novamente a URL/API key—ele oferece status instantâneo por padrão ao pressionar Enter, com re-sincronização e sincronização de modelos ao vivo em 1 segundo.
 * 🩺 **Comandos Dedicados de Status e Auditoria**: Execute `gc status` ou `gc audit` a qualquer momento para verificar a saúde da conexão e inspecionar a configuração de todas as ferramentas.
+* 🔔 **Notificador Automático de Atualização (Zero Overhead)**: Detecta silenciosamente se há uma versão mais nova disponível no npm com cache inteligente de 24 horas (não trava o terminal), alertando com os comandos para atualizar.
 
 ---
 
 ## Início Rápido
 
-### 1. Executar Diretamente via Git
+### 1. Instalação Global via npm (Recomendado)
+```bash
+npm install -g gc-helper
+```
+
+Depois de instalado, você pode executar o utilitário em qualquer terminal:
+```bash
+gc-helper
+# ou o atalho rápido:
+gc
+```
+
+Ou execute diretamente sem instalar via `npx`:
+```bash
+npx gc-helper
+```
+
+### 2. Executar Diretamente via Git
 ```bash
 git clone https://github.com/bepaldes/gc-helper.git
 cd gc-helper
 node bin/gc-helper.mjs
-```
-
-### 2. Opcional: Instalação Global no Terminal
-```bash
+# ou vincular localmente:
 npm link
-# Agora você pode executar de qualquer diretório via qualquer comando:
-gc-helper
-# ou o atalho reduzido:
-gc
 ```
 
 ---
@@ -134,6 +146,7 @@ Passo 5: Modo de Persistência
 | **`setup`** | *(padrão)* | Executa o assistente ou painel de gerenciamento se já configurado. | `gc-helper` ou `gc` |
 | **`status`** | `audit`, `check` | Verificação rápida de conexão e diagnóstico dos harnesses instalados. | `gc-helper status` ou `gc status` |
 | **`sync`** | `--sync` | Re-sincronização rápida das credenciais existentes para todos os harnesses detectados. | `gc-helper sync` ou `gc sync` |
+| **`sync-models`** | `--sync-models`, `syncmodels` | Descobre, valida saúde e sincroniza modelos ao vivo nos harnesses e Heimdall. | `gc-helper sync-models` ou `gc sync-models` |
 | **`audit`** | `--audit`, `check` | Audita a saúde da conexão, latência, catálogo de modelos e status das IAs. | `gc-helper audit` ou `gc audit` |
 | **`help`** | `--help`, `-h` | Exibe o manual de parâmetros no terminal. | `gc-helper help` ou `gc help` |
 

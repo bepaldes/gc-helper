@@ -47,27 +47,39 @@ However, manually configuring each AI coding assistant requires editing fragment
   * **Open Design** (`Open Design/namespaces/*/data/app-config.json` & `~/.config/mms/model-routes.json`)
 * 🛡️ **Non-Destructive Backups**: Automatically creates `.bak` safety backups before updating any configuration file.
 * 💾 **Dual Persistence (Config + Environment)**: By default, updates both tool-specific configuration files AND system-wide user environment variables (Windows User Registry `HKCU\Environment` or macOS/Linux `~/.zshrc` / `~/.bashrc`).
-* 🎛️ **Intelligent Management Hub**: Once configured, running `gc-helper` or `gc` never re-prompts for URL/API key—it presents an instant status check by default on Enter, with 1-second harness re-sync.
+* 🔄 **Live Model Synchronization & Health Check**: Discovers live models directly from `https://ghostcli.cloud/v1/models`, tests live responsiveness via fast ping to `/v1/messages`, enforces 1M max context limits, and synchronizes catalogs across coding harnesses (`~/.codex/ghostcli-models.json`, Hermes `config.yaml`, OpenCode `config.json`, Open Design, Claude Code) and **Heimdall Agent** (`config/models.json`).
+* 🎛️ **Intelligent Management Hub**: Once configured, running `gc-helper` or `gc` never re-prompts for URL/API key—it presents an instant status check by default on Enter, with 1-second harness re-sync and live model sync.
 * 🩺 **Standalone Status & Audit Commands**: Run `gc status` or `gc audit` at any time for instant connection verification and active harness diagnosis.
+* 🔔 **Zero-Overhead Update Notifier**: Automatically detects when a newer version of `gc-helper` is available on npm with 24-hour non-blocking caching, alerting you with instructions to upgrade.
 
 ---
 
 ## Quickstart
 
-### 1. Run Directly via Git
+### 1. Install Globally via npm (Recommended)
+```bash
+npm install -g gc-helper
+```
+
+Once installed, you can run the helper from any terminal using either command:
+```bash
+gc-helper
+# or the shorthand command:
+gc
+```
+
+Or run directly without installation via `npx`:
+```bash
+npx gc-helper
+```
+
+### 2. Run Directly via Git
 ```bash
 git clone https://github.com/bepaldes/gc-helper.git
 cd gc-helper
 node bin/gc-helper.mjs
-```
-
-### 2. Optional: Install Globally
-```bash
+# or link locally:
 npm link
-# Now you can run it from any terminal via either command:
-gc-helper
-# or shorthand alias:
-gc
 ```
 
 ---
@@ -134,6 +146,7 @@ Step 5: Persistence Mode
 | **`setup`** | *(default)* | Runs the interactive wizard or management hub. | `gc-helper` or `gc` |
 | **`status`** | `audit`, `check` | Quick connection verification and active harness audit. | `gc-helper status` or `gc status` |
 | **`sync`** | `--sync` | Fast zero-prompt re-sync of existing credentials to all detected harnesses. | `gc-helper sync` or `gc sync` |
+| **`sync-models`** | `--sync-models`, `syncmodels` | Discover, health-check, and sync live models to harnesses & Heimdall. | `gc-helper sync-models` or `gc sync-models` |
 | **`audit`** | `--audit`, `check` | Deep connection health, latency, model catalogs, and harness inspection. | `gc-helper audit` or `gc audit` |
 | **`help`** | `--help`, `-h` | Displays the terminal parameter reference. | `gc-helper help` or `gc help` |
 

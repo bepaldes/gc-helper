@@ -1,19 +1,31 @@
 {
   "name": "gc-helper",
   "version": "1.0.0",
-  "description": "Zero-dependency auto-configurator, connection auditor, and status hub for AI coding harnesses (Claude Code, Codex, Hermes, VS Code, Claude Desktop, OpenClaw, OpenCode, OMP).",
+  "description": "Zero-dependency auto-configurator, connection auditor, and status hub for AI coding harnesses (Claude Code, Codex, Hermes, VS Code, Claude Desktop, OpenClaw, OpenCode, OMP, Open Design).",
   "type": "module",
   "main": "./src/cli.mjs",
   "bin": {
     "gc-helper": "./bin/gc-helper.mjs",
     "gc": "./bin/gc-helper.mjs"
   },
+  "files": [
+    "bin",
+    "src",
+    "LICENSE",
+    "README.md",
+    "README.pt-BR.md"
+  ],
   "scripts": {
     "start": "node bin/gc-helper.mjs",
     "status": "node bin/gc-helper.mjs status",
     "sync": "node bin/gc-helper.mjs sync",
+    "sync-models": "node bin/gc-helper.mjs sync-models",
     "audit": "node bin/gc-helper.mjs audit",
-    "test": "node test/test.mjs"
+    "test": "node test/test.mjs",
+    "prepublishOnly": "node test/test.mjs"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -29,6 +41,7 @@
     "openclaw",
     "opencode",
     "omp",
+    "open-design",
     "ai-agent",
     "llm-proxy",
     "developer-tools"

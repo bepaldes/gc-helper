@@ -77,10 +77,24 @@ export const DEFAULT_GHOSTCLI_MODELS = {
   ]
 };
 
+export function buildCatalogFromModelSpecs(modelSpecs = []) {
+  if (!Array.isArray(modelSpecs) || modelSpecs.length === 0) {
+    return DEFAULT_GHOSTCLI_MODELS;
+  }
+  const models = modelSpecs.map((spec, idx) => {
+    const slug = spec.id || spec.slug;
+    const name = spec.displayName || spec.display_name || slug;
+    const ctx = Math.max(Number(spec.contextWindow) || Number(spec.context_window) || 0, 1048576);
+    const maxOut = Math.max(Number(spec.maxOutputTokens) || Number(spec.max_output_tokens) || 0, 131072);
+    return buildCodexModelEntry(slug, name, idx + 1, ctx, maxOut);
+  });
+  return { models };
+}
+
 export function maximizeCatalogContext(catalogData = DEFAULT_GHOSTCLI_MODELS) {
   const models = Array.isArray(catalogData?.models) ? catalogData.models : DEFAULT_GHOSTCLI_MODELS.models;
   const maximized = models
-    .filter(m => m && typeof m.slug === 'string' && !m.slug.includes('glm-5.3') && !/\[1m\]$/i.test(m.slug))
+    .filter(m => m && typeof m.slug === 'string' && !/\[1m\]$/i.test(m.slug))
     .map((m, idx) => {
       const base = buildCodexModelEntry(m.slug, m.display_name || m.slug, m.priority ?? (idx + 1));
       const maxCtx = Math.max(
@@ -135,7 +149,7 @@ export function writeModelCatalog(catalogPath, catalogData = DEFAULT_GHOSTCLI_MO
   return catalogPath;
 }
 
-export function configureCodex(configPath, urls, apiKey, dryRun = false, catalogPath = null) {
+export function configureCodex(configPath, urls, apiKey, dryRun = false, catalogPath = null, models = null) {
   const dir = path.dirname(configPath);
   if (!fs.existsSync(dir) && !dryRun) {
     fs.mkdirSync(dir, { recursive: true });
@@ -143,7 +157,8 @@ export function configureCodex(configPath, urls, apiKey, dryRun = false, catalog
 
   const resolvedCatalogPath = catalogPath || path.join(dir, 'ghostcli-models.json');
   if (!dryRun) {
-    writeModelCatalog(resolvedCatalogPath, DEFAULT_GHOSTCLI_MODELS, dryRun);
+    const catalogSource = models ? buildCatalogFromModelSpecs(models) : DEFAULT_GHOSTCLI_MODELS;
+    writeModelCatalog(resolvedCatalogPath, catalogSource, dryRun);
   }
 
   let content = '';
