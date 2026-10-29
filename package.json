@@ -1,12 +1,12 @@
 {
   "name": "gc-helper",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Zero-dependency auto-configurator, connection auditor, and status hub for AI coding harnesses (Claude Code, Codex, Hermes, VS Code, Claude Desktop, OpenClaw, OpenCode, OMP, Open Design).",
   "type": "module",
   "main": "./src/cli.mjs",
   "bin": {
-    "gc-helper": "./bin/gc-helper.mjs",
-    "gc": "./bin/gc-helper.mjs"
+    "gc-helper": "bin/gc-helper.mjs",
+    "gc": "bin/gc-helper.mjs"
   },
   "files": [
     "bin",
@@ -50,6 +50,6 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/bepaldes/gc-helper.git"
+    "url": "git+https://github.com/bepaldes/gc-helper.git"
   }
 }
