@@ -408,7 +408,7 @@ export function detectHarnesses() {
   if (opencodeConfigExists) {
     try {
       const cfg = JSON.parse(fs.readFileSync(toolPaths.opencode.config, 'utf8'));
-      openclawEndpoint = cfg.base_url || cfg.endpoint || null;
+      opencodeEndpoint = cfg.providers?.ghostcli?.base_url || cfg.providers?.ghostcli?.endpoint || cfg.base_url || cfg.endpoint || null;
     } catch {}
   }
   results.opencode = {

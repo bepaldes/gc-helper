@@ -8,7 +8,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { normalizeUrls, probeEndpoint, extractModelSpecs } from '../src/audit.mjs';
 import { parseArgs } from '../src/cli.mjs';
-import { isConfigured, detectConfiguredEndpoint, inspectHarnessContext, detectHeimdall } from '../src/detect.mjs';
+import { isConfigured, detectConfiguredEndpoint, inspectHarnessContext, detectHeimdall, detectHarnesses } from '../src/detect.mjs';
 import { resolveModelSpecs, writeModelsCache, readModelsCache, syncModelsToHeimdall, syncModelsToHarnesses, checkModelsHealth } from '../src/models.mjs';
 import { configureClaude } from '../src/configurators/claude.mjs';
 import { configureCodex } from '../src/configurators/codex.mjs';
@@ -438,6 +438,38 @@ console.log('\n[Test Suite 5: Configured Detection & Management Hub]');
 
   const fallbackUrl = detectConfiguredEndpoint(mockHarnessesEmpty, 'https://default.url', {});
   assert(fallbackUrl === 'https://default.url', 'detectConfiguredEndpoint falls back when none configured');
+
+  // OpenCode endpoint detection
+  const mockHarnessesWithOpenCode = {
+    opencode: { installed: true, configExists: true, currentEndpoint: 'https://ghostcli.cloud/v1' }
+  };
+  assert(isConfigured(mockHarnessesWithOpenCode, null) === true, 'isConfigured is true when OpenCode has configured endpoint');
+  assert(detectConfiguredEndpoint(mockHarnessesWithOpenCode, 'https://default.url', {}) === 'https://ghostcli.cloud/v1', 'detectConfiguredEndpoint extracts endpoint from OpenCode harness config');
+
+  // Live detectHarnesses OpenCode resolution
+  const origAppData = process.env.APPDATA;
+  const origXdg = process.env.XDG_CONFIG_HOME;
+  const tempHarnessDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-detect-'));
+  try {
+    process.env.APPDATA = tempHarnessDir;
+    process.env.XDG_CONFIG_HOME = tempHarnessDir;
+    const opencodeDir = path.join(tempHarnessDir, 'opencode');
+    fs.mkdirSync(opencodeDir, { recursive: true });
+    fs.writeFileSync(path.join(opencodeDir, 'config.json'), JSON.stringify({
+      providers: {
+        ghostcli: {
+          base_url: 'https://opencode.ghostcli.cloud/v1'
+        }
+      }
+    }));
+    const detected = detectHarnesses();
+    assert(detected.opencode.currentEndpoint === 'https://opencode.ghostcli.cloud/v1', 'detectHarnesses correctly detects OpenCode endpoint from providers.ghostcli.base_url');
+    assert(detected.opencode.configExists === true, 'detectHarnesses marks OpenCode configExists true');
+  } finally {
+    if (origAppData !== undefined) process.env.APPDATA = origAppData; else delete process.env.APPDATA;
+    if (origXdg !== undefined) process.env.XDG_CONFIG_HOME = origXdg; else delete process.env.XDG_CONFIG_HOME;
+    fs.rmSync(tempHarnessDir, { recursive: true, force: true });
+  }
 }
 
 // 6. Version & Update Notifier Tests
