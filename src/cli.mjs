@@ -18,6 +18,7 @@ import { configureOpenDesign } from './configurators/opendesign.mjs';
 import { configureEnvironmentVariables } from './env.mjs';
 import { VERSION } from './version.mjs';
 import { runSyncModels, readModelsCache } from './models.mjs';
+import { runTestAllModels } from './test-models.mjs';
 
 const colors = {
   reset: '\x1b[0m',
@@ -72,6 +73,8 @@ export function parseArgs(args) {
       options.command = 'sync';
     } else if (arg === 'sync-models' || arg === '--sync-models' || arg === 'syncmodels') {
       options.command = 'sync-models';
+    } else if (arg === 'test-models' || arg === '--test-models' || arg === 'testmodels' || arg === 'probe') {
+      options.command = 'test-models';
     } else if (arg === 'setup' || arg === '--setup') {
       options.command = 'setup';
     } else if (arg === '--reconfigure' || arg === 'reconfigure' || arg === '--force' || arg === '-f') {
@@ -94,6 +97,12 @@ export function parseArgs(args) {
       options.yes = true;
     } else if (arg === '--dry-run') {
       options.dryRun = true;
+    } else if (arg === '--timeout' && args[i + 1]) {
+      options.timeoutMs = parseInt(args[++i], 10) || 25000;
+    } else if ((arg === '--turns' || arg === '-t') && args[i + 1]) {
+      options.turns = parseInt(args[++i], 10) || 3;
+    } else if ((arg === '--model' || arg === '-m') && args[i + 1]) {
+      options.model = args[++i];
     }
   }
 
@@ -114,6 +123,7 @@ ${colors.bold}COMMANDS:${colors.reset}
   ${colors.green}status${colors.reset}      Verify connection and inspect harness configs (alias: audit)
   ${colors.green}sync${colors.reset}        Fast re-sync detected harnesses using existing credentials
   ${colors.green}sync-models${colors.reset} Discover, test, and sync live models across AI harnesses & Heimdall
+  ${colors.green}test-models${colors.reset} Deep multi-turn response & reasoning test across all models
   ${colors.green}audit${colors.reset}       Deep ecosystem connection & model inspection
   ${colors.green}help${colors.reset}        Show this manual
 
@@ -268,42 +278,54 @@ export async function runPostInstallMenu(options = {}) {
   const rl = readline.createInterface({ input, output });
 
   try {
-    console.log(`${colors.bold}${colors.cyan}=== GhostCLI Management Hub ===${colors.reset}`);
-    console.log(`GhostCLI is already configured and active across your environment.\n`);
-    console.log(`What would you like to do?`);
-    console.log(`  1. Connection & Harness Status [default]`);
-    console.log(`  2. Re-sync All Detected Harnesses`);
-    console.log(`  3. Synchronize Models from GhostCLI API`);
-    console.log(`  4. Reconfigure URL / API Key`);
-    console.log(`  5. Exit\n`);
+    let looping = true;
+    while (looping) {
+      console.log(`${colors.bold}${colors.cyan}=== GhostCLI Management Hub ===${colors.reset}`);
+      console.log(`GhostCLI is already configured and active across your environment.\n`);
+      console.log(`What would you like to do?`);
+      console.log(`  1. Connection & Harness Status [default]`);
+      console.log(`  2. Re-sync All Detected Harnesses`);
+      console.log(`  3. Synchronize Models from GhostCLI API`);
+      console.log(`  4. Deep Multi-Turn Test All Models`);
+      console.log(`  5. Reconfigure URL / API Key`);
+      console.log(`  6. Exit\n`);
 
-    const answer = await rl.question(`Choose an option [1-5, default: 1]: `);
-    const choice = answer.trim().toLowerCase();
+      const answer = await rl.question(`Choose an option [1-6, default: 1]: `);
+      const choice = answer.trim().toLowerCase();
 
-    if (choice === '1' || choice === '') {
-      await runAudit({ ...options, skipBanner: true });
-      return 'exit';
-    } else if (choice === '2') {
-      await runSync({ ...options, skipBanner: true });
-      return 'exit';
-    } else if (choice === '3') {
-      await runSyncModels({ ...options, skipBanner: true });
-      return 'exit';
-    } else if (choice === '4') {
-      return 'reconfigure';
-    } else if (choice === '5' || choice === 'q' || choice === 'exit') {
-      console.log('Goodbye!');
-      return 'exit';
-    } else {
-      await runAudit({ ...options, skipBanner: true });
-      return 'exit';
+      if (choice === '1' || choice === '') {
+        await runAudit({ ...options, skipBanner: true });
+      } else if (choice === '2') {
+        await runSync({ ...options, skipBanner: true });
+      } else if (choice === '3') {
+        await runSyncModels({ ...options, skipBanner: true });
+      } else if (choice === '4') {
+        await runTestAllModels({ ...options, skipBanner: true });
+      } else if (choice === '5') {
+        return 'reconfigure';
+      } else if (choice === '6' || choice === 'q' || choice === 'exit') {
+        console.log('Goodbye!');
+        return 'exit';
+      } else {
+        await runAudit({ ...options, skipBanner: true });
+      }
+
+      console.log('');
+      const again = await rl.question(`${colors.yellow}Return to main menu or exit? [m/e, default: m]: ${colors.reset}`);
+      const againChoice = again.trim().toLowerCase();
+      if (againChoice === 'e' || againChoice === 'exit' || againChoice === 'q') {
+        console.log('Goodbye!');
+        return 'exit';
+      }
+      console.log('');
     }
+    return 'exit';
   } finally {
     rl.close();
   }
 }
 
-export { runSyncModels };
+export { runSyncModels, runTestAllModels };
 
 export async function runSetup(options = {}) {
   if (options.help) {
