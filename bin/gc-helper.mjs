@@ -4,7 +4,7 @@
  * GC-Helper — CLI Executable Entrypoint
  */
 
-import { parseArgs, runSetup, runAudit, runSync, runSyncModels, printVersion } from '../src/cli.mjs';
+import { parseArgs, runSetup, runAudit, runSync, runSyncModels, runTestAllModels, printVersion } from '../src/cli.mjs';
 import { startUpdateNotifier } from '../src/update.mjs';
 
 const options = parseArgs(process.argv.slice(2));
@@ -23,6 +23,8 @@ try {
     await runSync(options);
   } else if (options.command === 'sync-models') {
     await runSyncModels(options);
+  } else if (options.command === 'test-models') {
+    await runTestAllModels(options);
   } else {
     await runSetup(options);
   }

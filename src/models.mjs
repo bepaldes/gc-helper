@@ -54,27 +54,8 @@ export function writeModelsCache(cachePath = getDefaultModelsCachePath(), data =
   }
 }
 
-/**
- * Checks live health of discovered models by sending a minimal test probe
- * to /v1/messages (mimicking Heimdall's model health check).
- */
-export async function checkModelsHealth(baseUrl, apiKey, modelsList, timeoutMs = 8000) {
-  if (!Array.isArray(modelsList) || modelsList.length === 0) {
-    return { liveModels: [], deadModels: [], testedCount: 0 };
-  }
-
-  if (!apiKey || typeof apiKey !== 'string' || apiKey.trim() === '') {
-    return { liveModels: modelsList, deadModels: [], testedCount: 0 };
-  }
-
-  const cleanBase = (baseUrl || 'https://ghostcli.cloud').trim().replace(/\/+$/, '').replace(/\/v1$/, '');
-  const messagesUrl = `${cleanBase}/v1/messages`;
-  const cleanKey = apiKey.trim();
-
-  const tested = await Promise.all(modelsList.map(async m => {
-    const modelId = typeof m === 'string' ? m : (m.id || m.slug || m.name);
-    let isAlive = true;
-
+async function probeModelHealth(messagesUrl, cleanKey, modelId, timeoutMs = 20000) {
+  for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const res = await fetch(messagesUrl, {
         method: 'POST',
@@ -91,17 +72,45 @@ export async function checkModelsHealth(baseUrl, apiKey, modelsList, timeoutMs =
         }),
         signal: AbortSignal.timeout(timeoutMs)
       });
-      isAlive = res.ok;
+      if (res.ok) return 'alive';
+      const isRetryable = res.status === 408 || res.status === 429 || res.status >= 500;
+      if (!isRetryable || attempt === 1) return 'dead';
     } catch {
-      isAlive = false;
+      if (attempt === 1) return 'slow';
     }
+  }
+  return 'slow';
+}
 
-    return { raw: m, modelId, isAlive };
+/**
+ * Checks live health of discovered models by sending a minimal test probe
+ * to /v1/messages with a 20s timeout and 1 retry on transient errors.
+ * Definitive 4xx (except 408/429) or repeated 5xx are filtered out;
+ * timed-out models are preserved as 'slow'.
+ */
+export async function checkModelsHealth(baseUrl, apiKey, modelsList, timeoutMs = 20000) {
+  if (!Array.isArray(modelsList) || modelsList.length === 0) {
+    return { liveModels: [], deadModels: [], slowModels: [], testedCount: 0 };
+  }
+
+  if (!apiKey || typeof apiKey !== 'string' || apiKey.trim() === '') {
+    return { liveModels: modelsList, deadModels: [], slowModels: [], testedCount: 0 };
+  }
+
+  const cleanBase = (baseUrl || 'https://ghostcli.cloud').trim().replace(/\/+$/, '').replace(/\/v1$/, '');
+  const messagesUrl = `${cleanBase}/v1/messages`;
+  const cleanKey = apiKey.trim();
+
+  const tested = await Promise.all(modelsList.map(async m => {
+    const modelId = typeof m === 'string' ? m : (m.id || m.slug || m.name);
+    const status = await probeModelHealth(messagesUrl, cleanKey, modelId, timeoutMs);
+    return { raw: m, modelId, status };
   }));
 
   return {
-    liveModels: tested.filter(t => t.isAlive).map(t => t.raw),
-    deadModels: tested.filter(t => !t.isAlive).map(t => t.modelId),
+    liveModels: tested.filter(t => t.status !== 'dead').map(t => t.raw),
+    deadModels: tested.filter(t => t.status === 'dead').map(t => t.modelId),
+    slowModels: tested.filter(t => t.status === 'slow').map(t => t.modelId),
     testedCount: tested.length
   };
 }
@@ -340,11 +349,15 @@ export async function runSyncModels(options = {}) {
 
   // Live health check
   console.log(`Checking live health of discovered models...`);
-  const health = await checkModelsHealth(urls.baseUrl, detectedKey, rawModelsList, options.timeoutMs || 8000);
+  const health = await checkModelsHealth(urls.baseUrl, detectedKey, rawModelsList, options.timeoutMs || 20000);
 
   if (health.deadModels.length > 0) {
     console.log(`${colors.yellow}⚠ Filtered out ${health.deadModels.length} unresponsive model(s): ${health.deadModels.join(', ')}${colors.reset}\n`);
-  } else if (health.testedCount > 0) {
+  }
+  if (health.slowModels && health.slowModels.length > 0) {
+    console.log(`${colors.yellow}⚠ Slow / timed-out model(s) preserved: ${health.slowModels.join(', ')}${colors.reset}\n`);
+  }
+  if (health.deadModels.length === 0 && (!health.slowModels || health.slowModels.length === 0) && health.testedCount > 0) {
     console.log(`${colors.green}✔ All ${health.liveModels.length} tested models are active and responsive!${colors.reset}\n`);
   }
 
