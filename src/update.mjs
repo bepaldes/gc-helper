@@ -5,7 +5,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { setDefaultResultOrder } from 'node:dns';
 import { VERSION, PACKAGE_NAME } from './version.mjs';
+
+setDefaultResultOrder('ipv4first');
 
 /**
  * Compare two semver strings (e.g. "1.0.0" vs "1.0.1").

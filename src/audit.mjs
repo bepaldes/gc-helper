@@ -4,6 +4,10 @@
  * and parses remote model catalogs.
  */
 
+import { setDefaultResultOrder } from 'node:dns';
+
+setDefaultResultOrder('ipv4first');
+
 export function normalizeUrls(rawUrl = 'https://ghostcli.cloud') {
   let trimmed = (rawUrl || 'https://ghostcli.cloud').trim().replace(/\/+$/, '');
   if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {

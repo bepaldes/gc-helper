@@ -4,8 +4,11 @@
  * to distinguish genuine responsive models from canned mocks or degraded endpoints.
  */
 
+import { setDefaultResultOrder } from 'node:dns';
 import { detectExistingKey, detectConfiguredEndpoint } from './detect.mjs';
 import { normalizeUrls } from './audit.mjs';
+
+setDefaultResultOrder('ipv4first');
 
 const colors = {
   reset: '\x1b[0m',

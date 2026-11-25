@@ -8,8 +8,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { setDefaultResultOrder } from 'node:dns';
 import { normalizeUrls } from './audit.mjs';
 import { detectExistingKey, detectHarnesses, detectHeimdall } from './detect.mjs';
+
+setDefaultResultOrder('ipv4first');
 import { configureCodex } from './configurators/codex.mjs';
 import { configureHermes } from './configurators/hermes.mjs';
 import { configureOpenCode } from './configurators/opencode.mjs';
