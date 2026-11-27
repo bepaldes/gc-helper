@@ -8,11 +8,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { setDefaultResultOrder } from 'node:dns';
+import { ipFetch, ipFamilyFromMode, normalizeIpMode, resolveIpTargets, formatIpLabel } from './net.mjs';
 import { normalizeUrls } from './audit.mjs';
 import { detectExistingKey, detectHarnesses, detectHeimdall } from './detect.mjs';
-
-setDefaultResultOrder('ipv4first');
 import { configureCodex } from './configurators/codex.mjs';
 import { configureHermes } from './configurators/hermes.mjs';
 import { configureOpenCode } from './configurators/opencode.mjs';
@@ -57,10 +55,10 @@ export function writeModelsCache(cachePath = getDefaultModelsCachePath(), data =
   }
 }
 
-async function probeModelHealth(messagesUrl, cleanKey, modelId, timeoutMs = 20000) {
+async function probeModelHealth(messagesUrl, cleanKey, modelId, timeoutMs = 20000, ipFamily = null) {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const res = await fetch(messagesUrl, {
+      const res = await ipFetch(messagesUrl, {
         method: 'POST',
         headers: {
           'x-api-key': cleanKey,
@@ -73,6 +71,7 @@ async function probeModelHealth(messagesUrl, cleanKey, modelId, timeoutMs = 2000
           max_tokens: 5,
           messages: [{ role: 'user', content: 'hi' }]
         }),
+        ipFamily,
         signal: AbortSignal.timeout(timeoutMs)
       });
       if (res.ok) return 'alive';
@@ -91,7 +90,7 @@ async function probeModelHealth(messagesUrl, cleanKey, modelId, timeoutMs = 2000
  * Definitive 4xx (except 408/429) or repeated 5xx are filtered out;
  * timed-out models are preserved as 'slow'.
  */
-export async function checkModelsHealth(baseUrl, apiKey, modelsList, timeoutMs = 20000) {
+export async function checkModelsHealth(baseUrl, apiKey, modelsList, timeoutMs = 20000, options = {}) {
   if (!Array.isArray(modelsList) || modelsList.length === 0) {
     return { liveModels: [], deadModels: [], slowModels: [], testedCount: 0 };
   }
@@ -103,10 +102,11 @@ export async function checkModelsHealth(baseUrl, apiKey, modelsList, timeoutMs =
   const cleanBase = (baseUrl || 'https://ghostcli.cloud').trim().replace(/\/+$/, '').replace(/\/v1$/, '');
   const messagesUrl = `${cleanBase}/v1/messages`;
   const cleanKey = apiKey.trim();
+  const ipFamily = options.ipFamily ?? ipFamilyFromMode(options.ipMode);
 
   const tested = await Promise.all(modelsList.map(async m => {
     const modelId = typeof m === 'string' ? m : (m.id || m.slug || m.name);
-    const status = await probeModelHealth(messagesUrl, cleanKey, modelId, timeoutMs);
+    const status = await probeModelHealth(messagesUrl, cleanKey, modelId, timeoutMs, ipFamily);
     return { raw: m, modelId, status };
   }));
 
@@ -290,12 +290,16 @@ export async function runSyncModels(options = {}) {
   const harnesses = detectHarnesses();
   const detectedUrl = options.url || 'https://ghostcli.cloud';
   const urls = normalizeUrls(detectedUrl);
+  const ipMode = normalizeIpMode(options.ipMode);
+  const ipTargets = resolveIpTargets(ipMode);
+  const primaryFamily = ipFamilyFromMode(ipTargets[0]);
 
+  console.log(`IP Mode: ${colors.cyan}${formatIpLabel(ipMode)}${colors.reset}`);
   console.log(`Probing GhostCLI Models API: ${colors.yellow}${urls.modelsUrl}${colors.reset}...`);
 
   let rawModelsList = [];
   try {
-    const res = await fetch(urls.modelsUrl, {
+    const res = await ipFetch(urls.modelsUrl, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${detectedKey.trim()}`,
@@ -303,6 +307,7 @@ export async function runSyncModels(options = {}) {
         'Accept': 'application/json',
         'User-Agent': 'gc-helper/1.0.0'
       },
+      ipFamily: primaryFamily,
       signal: AbortSignal.timeout(options.timeoutMs || 10000)
     });
 
@@ -337,8 +342,39 @@ export async function runSyncModels(options = {}) {
   }
 
   // Live health check
-  console.log(`Checking live health of discovered models...`);
-  const health = await checkModelsHealth(urls.baseUrl, detectedKey, rawModelsList, options.timeoutMs || 20000);
+  let health = { liveModels: [], deadModels: [], slowModels: [], testedCount: 0 };
+  if (ipTargets.length === 1) {
+    console.log(`Checking live health of discovered models (${formatIpLabel(ipTargets[0])})...`);
+    health = await checkModelsHealth(urls.baseUrl, detectedKey, rawModelsList, options.timeoutMs || 20000, {
+      ipMode: ipTargets[0]
+    });
+  } else {
+    const liveById = new Map();
+    const deadSet = new Set();
+    const slowSet = new Set();
+    let totalTested = 0;
+
+    for (const target of ipTargets) {
+      console.log(`Checking live health of discovered models (${formatIpLabel(target)})...`);
+      const targetHealth = await checkModelsHealth(urls.baseUrl, detectedKey, rawModelsList, options.timeoutMs || 20000, {
+        ipMode: target
+      });
+      totalTested = Math.max(totalTested, targetHealth.testedCount);
+      for (const m of targetHealth.liveModels) {
+        const id = typeof m === 'string' ? m : (m.id || m.slug || m.name);
+        if (id && !liveById.has(id)) liveById.set(id, m);
+      }
+      targetHealth.deadModels.forEach(id => deadSet.add(id));
+      targetHealth.slowModels.forEach(id => slowSet.add(id));
+    }
+
+    health = {
+      liveModels: Array.from(liveById.values()),
+      deadModels: [...deadSet].filter(id => !liveById.has(id)),
+      slowModels: [...slowSet],
+      testedCount: totalTested
+    };
+  }
 
   if (health.deadModels.length > 0) {
     console.log(`${colors.yellow}⚠ Filtered out ${health.deadModels.length} unresponsive model(s): ${health.deadModels.join(', ')}${colors.reset}\n`);

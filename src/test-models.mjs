@@ -4,11 +4,9 @@
  * to distinguish genuine responsive models from canned mocks or degraded endpoints.
  */
 
-import { setDefaultResultOrder } from 'node:dns';
+import { ipFetch, ipFamilyFromMode, normalizeIpMode, resolveIpTargets, formatIpLabel } from './net.mjs';
 import { detectExistingKey, detectConfiguredEndpoint } from './detect.mjs';
 import { normalizeUrls } from './audit.mjs';
-
-setDefaultResultOrder('ipv4first');
 
 const colors = {
   reset: '\x1b[0m',
@@ -86,6 +84,8 @@ function checkForDegradation(text) {
 export async function testSingleModel(endpoint, apiKey, modelId, options = {}) {
   const timeoutMs = options.timeoutMs || 25000;
   const questions = options.questions || DEFAULT_QUESTIONS.slice(0, options.turns || 3);
+  const ipMode = normalizeIpMode(options.ipMode);
+  const ipFamily = options.ipFamily ?? ipFamilyFromMode(ipMode);
   const cleanBase = endpoint.replace(/\/+$/, '').replace(/\/v1$/, '');
   const messagesUrl = `${cleanBase}/v1/messages`;
 
@@ -93,6 +93,8 @@ export async function testSingleModel(endpoint, apiKey, modelId, options = {}) {
   const turnResults = [];
   let isAlive = true;
   let overallError = null;
+  let remoteAddress = null;
+  let remoteFamily = null;
 
   for (let i = 0; i < questions.length; i++) {
     const q = questions[i];
@@ -105,7 +107,7 @@ export async function testSingleModel(endpoint, apiKey, modelId, options = {}) {
     let turnReason = '';
 
     try {
-      const res = await fetch(messagesUrl, {
+      const res = await ipFetch(messagesUrl, {
         method: 'POST',
         headers: {
           'x-api-key': apiKey,
@@ -118,8 +120,12 @@ export async function testSingleModel(endpoint, apiKey, modelId, options = {}) {
           max_tokens: 150,
           messages: conversationHistory
         }),
+        ipFamily,
         signal: AbortSignal.timeout(timeoutMs)
       });
+
+      if (res.remoteAddress) remoteAddress = res.remoteAddress;
+      if (res.remoteFamily) remoteFamily = res.remoteFamily;
 
       httpStatus = res.status;
       const turnDuration = Math.round(performance.now() - turnStart);
@@ -210,8 +216,169 @@ export async function testSingleModel(endpoint, apiKey, modelId, options = {}) {
     passedTurns,
     totalTurns: questions.length,
     avgDurationMs: avgDuration,
+    ipMode,
+    ipFamily,
+    remoteAddress,
+    remoteFamily,
     turnResults,
     error: overallError
+  };
+}
+
+/**
+ * Deduplicates model catalog entries that share a base ID (e.g. `model` and `model[1m]`),
+ * keeping only the entry with the highest context window (preferring `[1m]` on ties).
+ */
+export function deduplicateModelsByHighestContext(list = []) {
+  if (!Array.isArray(list)) return [];
+  const byBase = new Map();
+
+  for (const m of list) {
+    const rawId = typeof m === 'string' ? m : (m?.id || m?.slug || m?.model || m?.name);
+    if (!rawId || typeof rawId !== 'string') continue;
+
+    const baseId = rawId.replace(/\[1m\]$/i, '');
+    const is1m = /\[1m\]$/i.test(rawId);
+    let contextScore = 0;
+
+    if (m && typeof m === 'object') {
+      contextScore = Math.max(
+        Number(m.context_window) || 0,
+        Number(m.max_context_window) || 0,
+        Number(m.max_input_tokens) || 0,
+        Number(m.context_window_tokens) || 0,
+        Number(m.model_messages?.context_window) || 0,
+        Number(m.model_messages?.max_context_window) || 0
+      );
+    }
+    if (is1m && contextScore < 1000000) {
+      contextScore = 1000000;
+    }
+
+    const existing = byBase.get(baseId);
+    if (!existing) {
+      byBase.set(baseId, { rawId, contextScore, is1m });
+    } else if (
+      contextScore > existing.contextScore ||
+      (contextScore === existing.contextScore && is1m && !existing.is1m)
+    ) {
+      byBase.set(baseId, { rawId, contextScore, is1m });
+    }
+  }
+
+  return Array.from(byBase.values()).map(entry => entry.rawId);
+}
+
+async function runTestModelsPass(urls, apiKey, options, targetIpMode) {
+  const timeoutMs = options.timeoutMs || 25000;
+  const turnsCount = options.turns || 3;
+  const ipFamily = ipFamilyFromMode(targetIpMode);
+  const ipLabel = formatIpLabel(targetIpMode);
+
+  console.log(`${colors.bold}Transport:${colors.reset}  ${colors.cyan}${ipLabel}${colors.reset}`);
+  console.log(`Fetching model catalog from ${colors.yellow}${urls.modelsUrl}${colors.reset}...`);
+  let modelIds = [];
+
+  if (options.model) {
+    modelIds = [options.model];
+    console.log(`Targeting single specified model: ${colors.cyan}${options.model}${colors.reset}\n`);
+  } else {
+    try {
+      const res = await ipFetch(urls.modelsUrl, {
+        headers: {
+          'Authorization': `Bearer ${apiKey.trim()}`,
+          'x-api-key': apiKey.trim(),
+          'Accept': 'application/json'
+        },
+        ipFamily,
+        signal: AbortSignal.timeout(10000)
+      });
+
+      if (!res.ok) {
+        console.error(`${colors.red}Failed to fetch models from endpoint over ${ipLabel} (HTTP ${res.status})${colors.reset}\n`);
+        return { ok: false, ipMode: targetIpMode, ipFamily, error: `HTTP ${res.status}`, total: 0, healthy: [], degraded: [], dead: [], results: [] };
+      }
+
+      const data = await res.json();
+      const list = [
+        ...(Array.isArray(data.data) ? data.data : []),
+        ...(Array.isArray(data.models) ? data.models : [])
+      ];
+
+      modelIds = deduplicateModelsByHighestContext(list);
+      const remoteHint = res.remoteAddress ? ` (${res.remoteAddress})` : '';
+      console.log(`${colors.green}✔ Discovered ${modelIds.length} unique candidate models over ${ipLabel}${remoteHint}.${colors.reset}\n`);
+    } catch (err) {
+      console.error(`${colors.red}Error querying models catalog over ${ipLabel}: ${err.message}${colors.reset}\n`);
+      return { ok: false, ipMode: targetIpMode, ipFamily, error: err.message, total: 0, healthy: [], degraded: [], dead: [], results: [] };
+    }
+  }
+
+  if (modelIds.length === 0) {
+    console.log(`${colors.yellow}No models found to test.${colors.reset}\n`);
+    return { ok: false, ipMode: targetIpMode, ipFamily, error: 'Empty catalog', total: 0, healthy: [], degraded: [], dead: [], results: [] };
+  }
+
+  console.log(`${colors.bold}Executing Multi-Turn Verification Loop (${ipLabel}):${colors.reset}\n`);
+  const results = [];
+
+  for (let idx = 0; idx < modelIds.length; idx++) {
+    const modelId = modelIds[idx];
+    process.stdout.write(`[${idx + 1}/${modelIds.length}] Testing ${colors.cyan}${colors.bold}${modelId.padEnd(24)}${colors.reset} `);
+
+    const testResult = await testSingleModel(urls.baseUrl, apiKey, modelId, {
+      timeoutMs,
+      turns: turnsCount,
+      ipMode: targetIpMode,
+      ipFamily
+    });
+
+    results.push(testResult);
+
+    if (testResult.statusCategory === 'HEALTHY') {
+      console.log(`${colors.green}${colors.bold}✔ HEALTHY${colors.reset} (${testResult.passedTurns}/${testResult.totalTurns} passed, avg ${testResult.avgDurationMs}ms)`);
+    } else if (testResult.statusCategory === 'DEGRADED') {
+      console.log(`${colors.yellow}${colors.bold}⚠ DEGRADED${colors.reset} (${testResult.passedTurns}/${testResult.totalTurns} passed, avg ${testResult.avgDurationMs}ms)`);
+    } else {
+      console.log(`${colors.red}${colors.bold}✖ UNRESPONSIVE${colors.reset} (${testResult.turnResults[0]?.reason || 'Failed'})`);
+    }
+
+    for (const turn of testResult.turnResults) {
+      const icon = turn.ok ? `${colors.green}✔${colors.reset}` : `${colors.red}✖${colors.reset}`;
+      const preview = turn.reply ? `"${turn.reply.replace(/\s+/g, ' ').slice(0, 50)}"` : '';
+      console.log(`    ${icon} Turn ${turn.turn}: ${turn.durationMs}ms — ${turn.reason} ${colors.dim}${preview}${colors.reset}`);
+    }
+    console.log('');
+  }
+
+  console.log(`${colors.bold}${colors.cyan}==================== SUMMARY REPORT (${ipLabel}) ====================${colors.reset}\n`);
+  const healthy = results.filter(r => r.statusCategory === 'HEALTHY');
+  const degraded = results.filter(r => r.statusCategory === 'DEGRADED');
+  const dead = results.filter(r => r.statusCategory === 'DEAD');
+
+  console.log(`Total Tested:  ${results.length}`);
+  console.log(`  ${colors.green}● Healthy:${colors.reset}    ${healthy.length} model(s) fully answered all ${turnsCount} questions`);
+  console.log(`  ${colors.yellow}● Degraded:${colors.reset}   ${degraded.length} model(s) connected but had errors / proxy issues`);
+  console.log(`  ${colors.red}● Dead/Timeout:${colors.reset} ${dead.length} model(s) failed or timed out`);
+  console.log('');
+
+  if (healthy.length > 0) {
+    console.log(`${colors.green}${colors.bold}Recommended Active Models (${ipLabel}):${colors.reset}`);
+    healthy.forEach(h => {
+      console.log(`  • ${colors.bold}${h.modelId.padEnd(26)}${colors.reset} [Avg latency: ${h.avgDurationMs}ms]`);
+    });
+    console.log('');
+  }
+
+  return {
+    ok: true,
+    ipMode: targetIpMode,
+    ipFamily,
+    total: results.length,
+    healthy: healthy.map(h => h.modelId),
+    degraded: degraded.map(d => d.modelId),
+    dead: dead.map(d => d.modelId),
+    results
   };
 }
 
@@ -232,114 +399,50 @@ export async function runTestAllModels(options = {}) {
   const urls = normalizeUrls(endpoint);
   const timeoutMs = options.timeoutMs || 25000;
   const turnsCount = options.turns || 3;
+  const ipMode = normalizeIpMode(options.ipMode);
+  const ipTargets = resolveIpTargets(ipMode);
 
   console.log(`Configuration:`);
   console.log(`  Endpoint:   ${colors.yellow}${urls.baseUrl}${colors.reset}`);
   console.log(`  API Key:    ${colors.green}${apiKey.slice(0, 8)}...${apiKey.slice(-4)}${colors.reset}`);
+  console.log(`  IP Mode:    ${colors.cyan}${formatIpLabel(ipMode)}${colors.reset}`);
   console.log(`  Questions:  ${colors.bold}${turnsCount} progressive turns per model${colors.reset}`);
   console.log(`  Timeout:    ${timeoutMs}ms per turn\n`);
 
-  // 1. Fetch live models catalog
-  console.log(`Fetching model catalog from ${colors.yellow}${urls.modelsUrl}${colors.reset}...`);
-  let modelIds = [];
-
-  if (options.model) {
-    modelIds = [options.model];
-    console.log(`Targeting single specified model: ${colors.cyan}${options.model}${colors.reset}\n`);
-  } else {
-    try {
-      const res = await fetch(urls.modelsUrl, {
-        headers: {
-          'Authorization': `Bearer ${apiKey.trim()}`,
-          'x-api-key': apiKey.trim(),
-          'Accept': 'application/json'
-        },
-        signal: AbortSignal.timeout(10000)
-      });
-
-      if (!res.ok) {
-        console.error(`${colors.red}Failed to fetch models from endpoint (HTTP ${res.status})${colors.reset}\n`);
-        return { ok: false, error: `HTTP ${res.status}` };
-      }
-
-      const data = await res.json();
-      const list = [
-        ...(Array.isArray(data.data) ? data.data : []),
-        ...(Array.isArray(data.models) ? data.models : [])
-      ];
-
-      modelIds = [...new Set(list.map(m => typeof m === 'string' ? m : (m.id || m.slug || m.name)).filter(Boolean))];
-      console.log(`${colors.green}✔ Discovered ${modelIds.length} unique candidate models.${colors.reset}\n`);
-    } catch (err) {
-      console.error(`${colors.red}Error querying models catalog: ${err.message}${colors.reset}\n`);
-      return { ok: false, error: err.message };
-    }
+  if (ipTargets.length === 1) {
+    return runTestModelsPass(urls, apiKey, options, ipTargets[0]);
   }
 
-  if (modelIds.length === 0) {
-    console.log(`${colors.yellow}No models found to test.${colors.reset}\n`);
-    return { ok: false, error: 'Empty catalog' };
+  const runs = {};
+  for (const target of ipTargets) {
+    console.log(`${colors.bold}${colors.magenta}--- Pass: ${formatIpLabel(target)} ---${colors.reset}`);
+    runs[target] = await runTestModelsPass(urls, apiKey, options, target);
   }
 
-  // 2. Iterate through each model
-  console.log(`${colors.bold}Executing Multi-Turn Verification Loop:${colors.reset}\n`);
-  const results = [];
-
-  for (let idx = 0; idx < modelIds.length; idx++) {
-    const modelId = modelIds[idx];
-    process.stdout.write(`[${idx + 1}/${modelIds.length}] Testing ${colors.cyan}${colors.bold}${modelId.padEnd(24)}${colors.reset} `);
-
-    const testResult = await testSingleModel(urls.baseUrl, apiKey, modelId, {
-      timeoutMs,
-      turns: turnsCount
-    });
-
-    results.push(testResult);
-
-    // Render single-line status indicator
-    if (testResult.statusCategory === 'HEALTHY') {
-      console.log(`${colors.green}${colors.bold}✔ HEALTHY${colors.reset} (${testResult.passedTurns}/${testResult.totalTurns} passed, avg ${testResult.avgDurationMs}ms)`);
-    } else if (testResult.statusCategory === 'DEGRADED') {
-      console.log(`${colors.yellow}${colors.bold}⚠ DEGRADED${colors.reset} (${testResult.passedTurns}/${testResult.totalTurns} passed, avg ${testResult.avgDurationMs}ms)`);
+  console.log(`${colors.bold}${colors.cyan}================ IPv4 vs IPv6 COMPARISON ================${colors.reset}\n`);
+  for (const target of ipTargets) {
+    const r = runs[target];
+    const label = formatIpLabel(target).padEnd(6);
+    if (r.ok) {
+      console.log(`  ${colors.bold}${label}${colors.reset}: ${colors.green}${r.healthy.length} healthy${colors.reset}, ${colors.yellow}${r.degraded.length} degraded${colors.reset}, ${colors.red}${r.dead.length} dead${colors.reset} (total ${r.total})`);
     } else {
-      console.log(`${colors.red}${colors.bold}✖ UNRESPONSIVE${colors.reset} (${testResult.turnResults[0]?.reason || 'Failed'})`);
+      console.log(`  ${colors.bold}${label}${colors.reset}: ${colors.red}✖ Failed (${r.error})${colors.reset}`);
     }
-
-    // Detail turns if not 100% healthy
-    for (const turn of testResult.turnResults) {
-      const icon = turn.ok ? `${colors.green}✔${colors.reset}` : `${colors.red}✖${colors.reset}`;
-      const preview = turn.reply ? `"${turn.reply.replace(/\s+/g, ' ').slice(0, 50)}"` : '';
-      console.log(`    ${icon} Turn ${turn.turn}: ${turn.durationMs}ms — ${turn.reason} ${colors.dim}${preview}${colors.reset}`);
-    }
-    console.log('');
   }
-
-  // 3. Final Executive Summary
-  console.log(`${colors.bold}${colors.cyan}==================== SUMMARY REPORT ====================${colors.reset}\n`);
-  const healthy = results.filter(r => r.statusCategory === 'HEALTHY');
-  const degraded = results.filter(r => r.statusCategory === 'DEGRADED');
-  const dead = results.filter(r => r.statusCategory === 'DEAD');
-
-  console.log(`Total Tested:  ${results.length}`);
-  console.log(`  ${colors.green}● Healthy:${colors.reset}    ${healthy.length} model(s) fully answered all ${turnsCount} questions`);
-  console.log(`  ${colors.yellow}● Degraded:${colors.reset}   ${degraded.length} model(s) connected but had errors / proxy issues`);
-  console.log(`  ${colors.red}● Dead/Timeout:${colors.reset} ${dead.length} model(s) failed or timed out`);
   console.log('');
 
-  if (healthy.length > 0) {
-    console.log(`${colors.green}${colors.bold}Recommended Active Models:${colors.reset}`);
-    healthy.forEach(h => {
-      console.log(`  • ${colors.bold}${h.modelId.padEnd(26)}${colors.reset} [Avg latency: ${h.avgDurationMs}ms]`);
-    });
-    console.log('');
-  }
+  const anyOk = ipTargets.some(t => runs[t]?.ok);
+  const healthy = [...new Set(ipTargets.flatMap(t => runs[t]?.healthy || []))];
+  const degraded = [...new Set(ipTargets.flatMap(t => runs[t]?.degraded || []))];
+  const dead = [...new Set(ipTargets.flatMap(t => runs[t]?.dead || []))];
 
   return {
-    ok: true,
-    total: results.length,
-    healthy: healthy.map(h => h.modelId),
-    degraded: degraded.map(d => d.modelId),
-    dead: dead.map(d => d.modelId),
-    results
+    ok: anyOk,
+    ipMode: 'both',
+    runs,
+    total: Math.max(...ipTargets.map(t => runs[t]?.total || 0), 0),
+    healthy,
+    degraded,
+    dead
   };
 }

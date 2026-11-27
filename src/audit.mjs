@@ -4,9 +4,7 @@
  * and parses remote model catalogs.
  */
 
-import { setDefaultResultOrder } from 'node:dns';
-
-setDefaultResultOrder('ipv4first');
+import { ipFetch, ipFamilyFromMode, normalizeIpMode } from './net.mjs';
 
 export function normalizeUrls(rawUrl = 'https://ghostcli.cloud') {
   let trimmed = (rawUrl || 'https://ghostcli.cloud').trim().replace(/\/+$/, '');
@@ -86,12 +84,17 @@ export function extractModelSpecs(data = {}, offlineFilter = null) {
   return Array.from(byId.values());
 }
 
-export async function probeEndpoint(rawUrl, apiKey, timeoutMs = 10000) {
+export async function probeEndpoint(rawUrl, apiKey, timeoutMs = 10000, options = {}) {
+  const ipMode = normalizeIpMode(options.ipMode);
+  const ipFamily = options.ipFamily ?? ipFamilyFromMode(ipMode);
+
   if (!apiKey || typeof apiKey !== 'string' || apiKey.trim() === '') {
     return {
       ok: false,
       status: 0,
       latencyMs: 0,
+      ipMode,
+      ipFamily,
       models: [],
       error: 'API key is empty. Please provide a valid GhostCLI key (e.g. gcli_...).'
     };
@@ -102,7 +105,7 @@ export async function probeEndpoint(rawUrl, apiKey, timeoutMs = 10000) {
   const start = performance.now();
 
   try {
-    const res = await fetch(urls.modelsUrl, {
+    const res = await ipFetch(urls.modelsUrl, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${cleanKey}`,
@@ -110,10 +113,13 @@ export async function probeEndpoint(rawUrl, apiKey, timeoutMs = 10000) {
         'Accept': 'application/json',
         'User-Agent': 'gc-helper/1.0.0'
       },
+      ipFamily,
       signal: AbortSignal.timeout(timeoutMs)
     });
 
     const latencyMs = Math.round(performance.now() - start);
+    const remoteAddress = res.remoteAddress || null;
+    const remoteFamily = res.remoteFamily || null;
 
     if (res.ok) {
       let data = {};
@@ -130,6 +136,10 @@ export async function probeEndpoint(rawUrl, apiKey, timeoutMs = 10000) {
         ok: true,
         status: res.status,
         latencyMs,
+        ipMode,
+        ipFamily,
+        remoteAddress,
+        remoteFamily,
         urls,
         models: modelIds,
         modelSpecs,
@@ -143,6 +153,10 @@ export async function probeEndpoint(rawUrl, apiKey, timeoutMs = 10000) {
         ok: false,
         status: res.status,
         latencyMs,
+        ipMode,
+        ipFamily,
+        remoteAddress,
+        remoteFamily,
         urls,
         models: [],
         error: `Authentication failed (HTTP ${res.status}): Invalid or expired API key. Verify your token at https://ghostcli.cloud/dashboard`
@@ -154,6 +168,10 @@ export async function probeEndpoint(rawUrl, apiKey, timeoutMs = 10000) {
         ok: false,
         status: 404,
         latencyMs,
+        ipMode,
+        ipFamily,
+        remoteAddress,
+        remoteFamily,
         urls,
         models: [],
         error: `Endpoint not found (HTTP 404): "${urls.modelsUrl}" does not exist. Check your Base URL.`
@@ -164,6 +182,10 @@ export async function probeEndpoint(rawUrl, apiKey, timeoutMs = 10000) {
       ok: false,
       status: res.status,
       latencyMs,
+      ipMode,
+      ipFamily,
+      remoteAddress,
+      remoteFamily,
       urls,
       models: [],
       error: `Server returned unexpected HTTP ${res.status} (${res.statusText || 'Error'}).`
@@ -179,6 +201,8 @@ export async function probeEndpoint(rawUrl, apiKey, timeoutMs = 10000) {
       ok: false,
       status: 0,
       latencyMs,
+      ipMode,
+      ipFamily,
       urls,
       models: [],
       error: `Connection failed: ${errMsg}`

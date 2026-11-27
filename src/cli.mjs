@@ -3,6 +3,7 @@
  */
 
 import { normalizeUrls, probeEndpoint } from './audit.mjs';
+import { formatIpLabel, normalizeIpMode, resolveIpTargets } from './net.mjs';
 import { detectHarnesses, detectExistingKey, isConfigured, detectConfiguredEndpoint } from './detect.mjs';
 import { configureClaude } from './configurators/claude.mjs';
 import { configureCodex } from './configurators/codex.mjs';
@@ -60,8 +61,12 @@ export function parseArgs(args) {
     version: false,
     reconfigure: false,
     heimdall: true,
+    ipMode: 'auto',
     hasArgs: args.length > 0
   };
+
+  let sawIpv4 = false;
+  let sawIpv6 = false;
 
   for (let i = 0; i < args.length; i++) {
     const rawArg = args[i];
@@ -102,6 +107,14 @@ export function parseArgs(args) {
       options.turns = parseInt(args[++i], 10) || 3;
     } else if ((arg === '--model' || arg === '-m') && args[i + 1]) {
       options.model = args[++i];
+    } else if (arg === '-4' || arg === '--ipv4') {
+      sawIpv4 = true;
+      options.ipMode = sawIpv6 ? 'both' : 'ipv4';
+    } else if (arg === '-6' || arg === '--ipv6') {
+      sawIpv6 = true;
+      options.ipMode = sawIpv4 ? 'both' : 'ipv6';
+    } else if ((arg === '--ip' || arg === '--ip-version') && args[i + 1]) {
+      options.ipMode = normalizeIpMode(args[++i]);
     }
   }
 
@@ -133,6 +146,9 @@ ${colors.bold}OPTIONS:${colors.reset}
   ${colors.yellow}--mode <mode>${colors.reset}        Persistence mode: ${colors.bold}both${colors.reset} (default), ${colors.bold}config${colors.reset}, or ${colors.bold}env${colors.reset}
   ${colors.yellow}--tools <list>${colors.reset}       Comma-separated tools to configure: claude, codex, hermes, openclaw, opencode, omp, vscode, desktop, opendesign, all
   ${colors.yellow}--reconfigure, --force${colors.reset} Force re-prompting for Base URL and API Key
+  ${colors.yellow}-4, --ipv4${colors.reset}           Force IPv4 for API & model validation
+  ${colors.yellow}-6, --ipv6${colors.reset}           Force IPv6 for API & model validation
+  ${colors.yellow}--ip <mode>${colors.reset}          IP transport mode: ${colors.bold}auto${colors.reset} (default), ${colors.bold}ipv4${colors.reset}, ${colors.bold}ipv6${colors.reset}, or ${colors.bold}both${colors.reset}
   ${colors.yellow}-y, --yes${colors.reset}            Non-interactive mode (use defaults without prompting)
   ${colors.yellow}--dry-run${colors.reset}            Simulate changes without writing files or environment
 `);
@@ -147,30 +163,43 @@ export async function runAudit(options = {}) {
   const detectedUrl = options.url || detectConfiguredEndpoint(harnesses, 'https://ghostcli.cloud');
   const urls = normalizeUrls(detectedUrl);
 
+  const ipMode = normalizeIpMode(options.ipMode);
+  const ipTargets = resolveIpTargets(ipMode);
+
   console.log(`${colors.bold}Active Configuration Targets:${colors.reset}`);
   console.log(`  GC-Helper: v${VERSION}`);
   console.log(`  Base URL:  ${colors.cyan}${urls.baseUrl}${colors.reset}`);
   console.log(`  Claude:    ${colors.cyan}${urls.claudeUrl}${colors.reset}`);
   console.log(`  OpenAI v1: ${colors.cyan}${urls.openaiUrl}${colors.reset}`);
+  console.log(`  IP Mode:   ${colors.cyan}${formatIpLabel(ipMode)}${colors.reset}`);
   console.log(`  API Key:   ${detectedKey ? colors.green + (detectedKey.slice(0, 8) + '...' + detectedKey.slice(-4)) + colors.reset : colors.red + 'Not Found' + colors.reset}\n`);
 
   if (detectedKey) {
-    console.log(`Testing live connection to ${colors.yellow}${urls.modelsUrl}${colors.reset}...`);
-    const probe = await probeEndpoint(urls.baseUrl, detectedKey);
-    if (probe.ok) {
-      console.log(`${colors.green}✔ Connection verified!${colors.reset} Status: 200 OK | Latency: ${probe.latencyMs}ms`);
-      console.log(`${colors.green}✔ Discovered ${probe.totalModels} models:${colors.reset}`);
-      if (Array.isArray(probe.modelSpecs) && probe.modelSpecs.length > 0) {
-        probe.modelSpecs.forEach(s => {
+    let firstSuccessProbe = null;
+    for (const target of ipTargets) {
+      const targetLabel = formatIpLabel(target);
+      console.log(`Testing live connection to ${colors.yellow}${urls.modelsUrl}${colors.reset} (${targetLabel})...`);
+      const probe = await probeEndpoint(urls.baseUrl, detectedKey, options.timeoutMs || 10000, { ipMode: target });
+      if (probe.ok) {
+        const remoteHint = probe.remoteAddress ? ` | Remote: ${probe.remoteAddress}` : '';
+        console.log(`${colors.green}✔ Connection verified (${targetLabel})!${colors.reset} Status: 200 OK | Latency: ${probe.latencyMs}ms${remoteHint}`);
+        if (!firstSuccessProbe) firstSuccessProbe = probe;
+      } else {
+        console.log(`${colors.red}✖ Connection failed (${targetLabel}): ${probe.error}${colors.reset}`);
+      }
+    }
+
+    if (firstSuccessProbe) {
+      console.log(`${colors.green}✔ Discovered ${firstSuccessProbe.totalModels} models:${colors.reset}`);
+      if (Array.isArray(firstSuccessProbe.modelSpecs) && firstSuccessProbe.modelSpecs.length > 0) {
+        firstSuccessProbe.modelSpecs.forEach(s => {
           const ctxLabel = s.contextWindow >= 1000000 ? `${s.contextWindow.toLocaleString()} tokens (1M Max)` : `${s.contextWindow.toLocaleString()} tokens`;
           const outLabel = `${s.maxOutputTokens.toLocaleString()} max output`;
           console.log(`   • ${colors.bold}${s.id.padEnd(20)}${colors.reset} ${colors.dim}[Context: ${colors.green}${ctxLabel}${colors.dim} | ${outLabel}]${colors.reset}`);
         });
       } else {
-        probe.models.forEach(m => console.log(`   • ${m}`));
+        firstSuccessProbe.models.forEach(m => console.log(`   • ${m}`));
       }
-    } else {
-      console.log(`${colors.red}✖ Connection failed: ${probe.error}${colors.reset}`);
     }
   } else {
     console.log(`${colors.yellow}Notice: No GhostCLI API key found in environment or tool configs. Run 'gc-helper setup' to configure.${colors.reset}`);

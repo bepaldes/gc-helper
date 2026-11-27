@@ -6,8 +6,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import http from 'node:http';
 import { normalizeUrls, probeEndpoint, extractModelSpecs } from '../src/audit.mjs';
 import { parseArgs } from '../src/cli.mjs';
+import { normalizeIpMode, resolveIpTargets, ipFamilyFromMode, formatIpLabel } from '../src/net.mjs';
+import { testSingleModel, runTestAllModels, deduplicateModelsByHighestContext } from '../src/test-models.mjs';
 import { isConfigured, detectConfiguredEndpoint, inspectHarnessContext, detectHeimdall, detectHarnesses } from '../src/detect.mjs';
 import { resolveModelSpecs, writeModelsCache, readModelsCache, syncModelsToHeimdall, syncModelsToHarnesses, checkModelsHealth } from '../src/models.mjs';
 import { configureClaude } from '../src/configurators/claude.mjs';
@@ -644,6 +647,138 @@ console.log('\n[Test Suite 7: Dynamic Model Synchronization & Heimdall Integrati
   const claudeJson = JSON.parse(fs.readFileSync(claudeSyncFile, 'utf8'));
   assert(claudeJson.modelSettings?.['z-ai/glm-5.3'], 'Claude Code synced config includes z-ai/glm-5.3');
   assert(claudeJson.modelSettings?.['z-ai/glm-5.3-flash'], 'Claude Code synced config includes z-ai/glm-5.3-flash');
+}
+
+// 8. IPv4 & IPv6 Transport, API Validation & Model Testing
+console.log('\n[Test Suite 8: IPv4 & IPv6 Transport & Model Validation]');
+{
+  assert(normalizeIpMode('4') === 'ipv4', 'normalizeIpMode("4") -> ipv4');
+  assert(normalizeIpMode('v6') === 'ipv6', 'normalizeIpMode("v6") -> ipv6');
+  assert(normalizeIpMode('dual') === 'both', 'normalizeIpMode("dual") -> both');
+  assert(normalizeIpMode(undefined) === 'auto', 'normalizeIpMode(undefined) -> auto');
+  assert(JSON.stringify(resolveIpTargets('both')) === '["ipv4","ipv6"]', 'resolveIpTargets("both") -> ["ipv4","ipv6"]');
+  assert(ipFamilyFromMode('ipv4') === 4, 'ipFamilyFromMode("ipv4") -> 4');
+  assert(ipFamilyFromMode('ipv6') === 6, 'ipFamilyFromMode("ipv6") -> 6');
+  assert(ipFamilyFromMode('auto') === null, 'ipFamilyFromMode("auto") -> null');
+  assert(formatIpLabel('both') === 'IPv4 + IPv6', 'formatIpLabel("both") -> IPv4 + IPv6');
+
+  assert(parseArgs(['test-models', '-4']).ipMode === 'ipv4', 'parseArgs -4 sets ipv4');
+  assert(parseArgs(['test-models', '--ipv6']).ipMode === 'ipv6', 'parseArgs --ipv6 sets ipv6');
+  assert(parseArgs(['test-models', '-4', '-6']).ipMode === 'both', 'parseArgs -4 -6 sets both');
+  assert(parseArgs(['audit', '--ip', 'both']).ipMode === 'both', 'parseArgs --ip both sets both');
+
+  const dedupedStrings = deduplicateModelsByHighestContext([
+    'claude-sonnet-5',
+    'claude-sonnet-5[1m]',
+    'claude-opus-5[1m]',
+    'claude-opus-5',
+    'gpt-6-astra'
+  ]);
+  assert(
+    dedupedStrings.length === 3 &&
+    dedupedStrings.includes('claude-sonnet-5[1m]') &&
+    dedupedStrings.includes('claude-opus-5[1m]') &&
+    dedupedStrings.includes('gpt-6-astra'),
+    'deduplicateModelsByHighestContext prefers [1m] over regular regardless of order'
+  );
+
+  const dedupedObjects = deduplicateModelsByHighestContext([
+    { id: 'model-a', context_window: 200000 },
+    { id: 'model-a[1m]', context_window: 1000000 },
+    { id: 'model-b', context_window: 200000 }
+  ]);
+  assert(
+    dedupedObjects.length === 2 &&
+    dedupedObjects.includes('model-a[1m]') &&
+    dedupedObjects.includes('model-b'),
+    'deduplicateModelsByHighestContext keeps higher context model and preserves singletons'
+  );
+
+  const createMockApiServer = () => http.createServer((req, res) => {
+    if (req.url === '/v1/models') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ data: [{ id: 'test-model', context_window: 1000000 }] }));
+      return;
+    }
+    if (req.url === '/v1/messages' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', () => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ content: [{ type: 'text', text: '56' }] }));
+      });
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+
+  // IPv4-only server on 127.0.0.1
+  const v4Server = createMockApiServer();
+  await new Promise(resolve => v4Server.listen(0, '127.0.0.1', resolve));
+  const v4Port = v4Server.address().port;
+
+  try {
+    const v4Probe = await probeEndpoint(`http://localhost:${v4Port}`, 'gcli_test_key', 5000, { ipMode: 'ipv4' });
+    assert(v4Probe.ok === true, 'probeEndpoint succeeds over IPv4');
+    assert(v4Probe.remoteFamily === 'IPv4', 'probeEndpoint reports remoteFamily IPv4');
+    assert(v4Probe.remoteAddress === '127.0.0.1', 'probeEndpoint reports remoteAddress 127.0.0.1');
+
+    const v6ProbeOnV4Only = await probeEndpoint(`http://localhost:${v4Port}`, 'gcli_test_key', 5000, { ipMode: 'ipv6' });
+    assert(v6ProbeOnV4Only.ok === false, 'probeEndpoint fails over IPv6 when server is IPv4-only');
+
+    const v4Health = await checkModelsHealth(`http://localhost:${v4Port}`, 'gcli_test_key', ['test-model'], 5000, { ipMode: 'ipv4' });
+    assert(v4Health.liveModels.length === 1, 'checkModelsHealth detects live model over IPv4');
+
+    const v4Model = await testSingleModel(`http://localhost:${v4Port}`, 'gcli_test_key', 'test-model', { ipMode: 'ipv4', turns: 1 });
+    assert(v4Model.statusCategory === 'HEALTHY', 'testSingleModel passes over IPv4');
+    assert(v4Model.remoteFamily === 'IPv4', 'testSingleModel records IPv4 remoteFamily');
+
+    const v6ModelOnV4Only = await testSingleModel(`http://localhost:${v4Port}`, 'gcli_test_key', 'test-model', { ipMode: 'ipv6', turns: 1 });
+    assert(v6ModelOnV4Only.statusCategory === 'DEAD', 'testSingleModel fails over IPv6 when server is IPv4-only');
+
+    const bothRun = await runTestAllModels({
+      url: `http://localhost:${v4Port}`,
+      key: 'gcli_test_key',
+      ipMode: 'both',
+      turns: 1,
+      timeoutMs: 5000
+    });
+    assert(bothRun.ipMode === 'both', 'runTestAllModels returns ipMode both');
+    assert(bothRun.runs?.ipv4?.ok === true && bothRun.runs.ipv4.healthy.includes('test-model'), 'runTestAllModels both-mode passes IPv4 pass');
+    assert(bothRun.runs?.ipv6?.ok === false, 'runTestAllModels both-mode reports IPv6 failure on IPv4-only server');
+  } finally {
+    await new Promise(resolve => v4Server.close(resolve));
+  }
+
+  // IPv6-only server on ::1 (if IPv6 loopback is available)
+  const v6Server = createMockApiServer();
+  let v6Listening = false;
+  try {
+    await new Promise((resolve, reject) => {
+      v6Server.once('error', reject);
+      v6Server.listen(0, '::1', resolve);
+    });
+    v6Listening = true;
+  } catch {
+    v6Listening = false;
+  }
+
+  if (v6Listening) {
+    const v6Port = v6Server.address().port;
+    try {
+      const v6Probe = await probeEndpoint(`http://[::1]:${v6Port}`, 'gcli_test_key', 5000, { ipMode: 'ipv6' });
+      assert(v6Probe.ok === true, 'probeEndpoint succeeds over IPv6');
+      assert(v6Probe.remoteFamily === 'IPv6', 'probeEndpoint reports remoteFamily IPv6');
+      assert(v6Probe.remoteAddress === '::1', 'probeEndpoint reports remoteAddress ::1');
+
+      const v6Model = await testSingleModel(`http://[::1]:${v6Port}`, 'gcli_test_key', 'test-model', { ipMode: 'ipv6', turns: 1 });
+      assert(v6Model.statusCategory === 'HEALTHY', 'testSingleModel passes over IPv6');
+      assert(v6Model.remoteFamily === 'IPv6', 'testSingleModel records IPv6 remoteFamily');
+    } finally {
+      await new Promise(resolve => v6Server.close(resolve));
+    }
+  }
 }
 
 console.log(`\n---------------------------------------`);
