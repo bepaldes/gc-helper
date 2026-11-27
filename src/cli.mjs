@@ -2,8 +2,6 @@
  * GC-Helper — Main Interactive CLI Wizard & Command Router
  */
 
-import readline from 'node:readline/promises';
-import { stdin as input, stdout as output } from 'node:process';
 import { normalizeUrls, probeEndpoint } from './audit.mjs';
 import { detectHarnesses, detectExistingKey, isConfigured, detectConfiguredEndpoint } from './detect.mjs';
 import { configureClaude } from './configurators/claude.mjs';
@@ -19,6 +17,7 @@ import { configureEnvironmentVariables } from './env.mjs';
 import { VERSION } from './version.mjs';
 import { runSyncModels, readModelsCache } from './models.mjs';
 import { runTestAllModels } from './test-models.mjs';
+import { tuiSelect, tuiMultiSelect, tuiConfirm, tuiInput } from './tui.mjs';
 
 const colors = {
   reset: '\x1b[0m',
@@ -275,53 +274,54 @@ export async function runSync(options = {}) {
 
 export async function runPostInstallMenu(options = {}) {
   printBanner();
-  const rl = readline.createInterface({ input, output });
 
-  try {
-    let looping = true;
-    while (looping) {
-      console.log(`${colors.bold}${colors.cyan}=== GhostCLI Management Hub ===${colors.reset}`);
-      console.log(`GhostCLI is already configured and active across your environment.\n`);
-      console.log(`What would you like to do?`);
-      console.log(`  1. Connection & Harness Status [default]`);
-      console.log(`  2. Re-sync All Detected Harnesses`);
-      console.log(`  3. Synchronize Models from GhostCLI API`);
-      console.log(`  4. Deep Multi-Turn Test All Models`);
-      console.log(`  5. Reconfigure URL / API Key`);
-      console.log(`  6. Exit\n`);
+  while (true) {
+    const choice = await tuiSelect({
+      title: '=== GhostCLI Management Hub ===',
+      subtitle: 'GhostCLI is already configured and active across your environment.',
+      options: [
+        { value: 'status', label: 'Connection & Harness Status', hint: 'Recommended' },
+        { value: 'sync', label: 'Re-sync All Detected Harnesses' },
+        { value: 'sync-models', label: 'Synchronize Models from GhostCLI API' },
+        { value: 'test-models', label: 'Deep Multi-Turn Test All Models' },
+        { value: 'reconfigure', label: 'Reconfigure URL / API Key' },
+        { value: 'exit', label: 'Exit' }
+      ],
+      defaultIndex: 0,
+      cancelValue: 'exit'
+    });
 
-      const answer = await rl.question(`Choose an option [1-6, default: 1]: `);
-      const choice = answer.trim().toLowerCase();
-
-      if (choice === '1' || choice === '') {
-        await runAudit({ ...options, skipBanner: true });
-      } else if (choice === '2') {
-        await runSync({ ...options, skipBanner: true });
-      } else if (choice === '3') {
-        await runSyncModels({ ...options, skipBanner: true });
-      } else if (choice === '4') {
-        await runTestAllModels({ ...options, skipBanner: true });
-      } else if (choice === '5') {
-        return 'reconfigure';
-      } else if (choice === '6' || choice === 'q' || choice === 'exit') {
-        console.log('Goodbye!');
-        return 'exit';
-      } else {
-        await runAudit({ ...options, skipBanner: true });
-      }
-
-      console.log('');
-      const again = await rl.question(`${colors.yellow}Return to main menu or exit? [m/e, default: m]: ${colors.reset}`);
-      const againChoice = again.trim().toLowerCase();
-      if (againChoice === 'e' || againChoice === 'exit' || againChoice === 'q') {
-        console.log('Goodbye!');
-        return 'exit';
-      }
-      console.log('');
+    console.log('');
+    if (choice === 'status') {
+      await runAudit({ ...options, skipBanner: true });
+    } else if (choice === 'sync') {
+      await runSync({ ...options, skipBanner: true });
+    } else if (choice === 'sync-models') {
+      await runSyncModels({ ...options, skipBanner: true });
+    } else if (choice === 'test-models') {
+      await runTestAllModels({ ...options, skipBanner: true });
+    } else if (choice === 'reconfigure') {
+      return 'reconfigure';
+    } else if (choice === 'exit') {
+      console.log('Goodbye!');
+      return 'exit';
     }
-    return 'exit';
-  } finally {
-    rl.close();
+
+    const nextAction = await tuiSelect({
+      title: 'What would you like to do next?',
+      options: [
+        { value: 'menu', label: 'Return to main menu', hint: 'default' },
+        { value: 'exit', label: 'Exit' }
+      ],
+      defaultIndex: 0,
+      cancelValue: 'exit'
+    });
+
+    if (nextAction === 'exit') {
+      console.log('Goodbye!');
+      return 'exit';
+    }
+    console.log('');
   }
 }
 
@@ -348,141 +348,153 @@ export async function runSetup(options = {}) {
 
   printBanner();
 
-  const rl = readline.createInterface({ input, output });
+  let baseUrl = options.url || 'https://ghostcli.cloud';
+  let apiKey = options.key;
 
-  try {
-    let baseUrl = options.url || 'https://ghostcli.cloud';
-    let apiKey = options.key;
+  if (!options.yes) {
+    // Step 1: Confirm Base URL
+    baseUrl = await tuiInput({
+      title: 'Step 1: Confirm GhostCLI Base URL',
+      promptLabel: 'Base URL',
+      defaultValue: baseUrl
+    });
 
-    if (!options.yes) {
-      // Step 1: Confirm Base URL
-      console.log(`${colors.bold}Step 1: Confirm GhostCLI Base URL${colors.reset}`);
-      const promptUrl = await rl.question(`Enter Base URL [default: ${baseUrl}]: `);
-      if (promptUrl.trim()) baseUrl = promptUrl.trim();
-
-      // Step 2: Confirm API Key
-      console.log(`\n${colors.bold}Step 2: Confirm GhostCLI API Key${colors.reset}`);
-      const existingKey = detectExistingKey();
-      if (!apiKey && existingKey) {
-        const masked = existingKey.slice(0, 8) + '...' + existingKey.slice(-4);
-        const confirm = await rl.question(`Found existing API key (${colors.green}${masked}${colors.reset}). Use this key? [Y/n]: `);
-        if (confirm.trim().toLowerCase() !== 'n') {
-          apiKey = existingKey;
-        }
+    // Step 2: Confirm API Key
+    console.log(`\n${colors.bold}${colors.cyan}Step 2: Confirm GhostCLI API Key${colors.reset}`);
+    const detectedKey = detectExistingKey();
+    if (!apiKey && detectedKey) {
+      const masked = detectedKey.slice(0, 8) + '...' + detectedKey.slice(-4);
+      const useExisting = await tuiConfirm({
+        title: `Found existing API key (${colors.green}${masked}${colors.reset}). Use this key?`,
+        defaultYes: true
+      });
+      if (useExisting) {
+        apiKey = detectedKey;
       }
+    }
 
-      while (!apiKey) {
-        const inputKey = await rl.question(`Enter your GhostCLI API Key (starts with gcli_...): `);
-        if (inputKey.trim()) {
-          apiKey = inputKey.trim();
-        } else {
-          console.log(`${colors.red}API Key cannot be empty.${colors.reset}`);
-        }
-      }
+    if (!apiKey) {
+      apiKey = await tuiInput({
+        promptLabel: 'GhostCLI API Key (starts with gcli_...)',
+        required: true,
+        emptyError: 'API Key cannot be empty.'
+      });
+    }
+  } else {
+    if (!apiKey) apiKey = detectExistingKey();
+    if (!apiKey) {
+      console.error(`${colors.red}Error: Non-interactive mode requires --key <gcli_...> or existing environment variable.${colors.reset}`);
+      process.exit(1);
+    }
+  }
+
+  // Step 3: Interactive Validation / Audit Loop
+  let urls = normalizeUrls(baseUrl);
+  let validated = false;
+
+  console.log(`\n${colors.bold}${colors.cyan}Step 3: Pre-Flight Connection Validation${colors.reset}`);
+  while (!validated) {
+    console.log(`Validating token against ${colors.yellow}${urls.modelsUrl}${colors.reset}...`);
+    const probe = await probeEndpoint(urls.baseUrl, apiKey);
+
+    if (probe.ok) {
+      console.log(`${colors.green}✔ Connection verified!${colors.reset} HTTP 200 OK (${probe.latencyMs}ms) — ${probe.totalModels} models available.`);
+      validated = true;
     } else {
-      if (!apiKey) apiKey = detectExistingKey();
-      if (!apiKey) {
-        console.error(`${colors.red}Error: Non-interactive mode requires --key <gcli_...> or existing environment variable.${colors.reset}`);
-        process.exit(1);
-      }
-    }
-
-    // Step 3: Interactive Validation / Audit Loop
-    let urls = normalizeUrls(baseUrl);
-    let validated = false;
-
-    console.log(`\n${colors.bold}Step 3: Pre-Flight Connection Validation${colors.reset}`);
-    while (!validated) {
-      console.log(`Validating token against ${colors.yellow}${urls.modelsUrl}${colors.reset}...`);
-      const probe = await probeEndpoint(urls.baseUrl, apiKey);
-
-      if (probe.ok) {
-        console.log(`${colors.green}✔ Connection verified!${colors.reset} HTTP 200 OK (${probe.latencyMs}ms) — ${probe.totalModels} models available.`);
+      console.log(`${colors.red}✖ Validation Failed:${colors.reset} ${probe.error}`);
+      if (options.yes) {
+        console.log(`${colors.yellow}Warning: Proceeding anyway (--yes flag).${colors.reset}`);
         validated = true;
+        break;
+      }
+
+      const choice = await tuiSelect({
+        title: '\nHow would you like to proceed?',
+        options: [
+          { value: 'key', label: 'Re-enter API Key', hint: 'default' },
+          { value: 'url', label: 'Change Base URL' },
+          { value: 'skip', label: 'Skip validation & proceed anyway' },
+          { value: 'abort', label: 'Abort setup' }
+        ],
+        defaultIndex: 0,
+        cancelValue: 'abort'
+      });
+
+      if (choice === 'url') {
+        baseUrl = await tuiInput({
+          promptLabel: 'New Base URL',
+          defaultValue: baseUrl
+        });
+        urls = normalizeUrls(baseUrl);
+      } else if (choice === 'skip') {
+        console.log(`${colors.yellow}Skipping validation...${colors.reset}`);
+        validated = true;
+      } else if (choice === 'abort') {
+        console.log(`Setup aborted.`);
+        process.exit(0);
       } else {
-        console.log(`${colors.red}✖ Validation Failed:${colors.reset} ${probe.error}`);
-        if (options.yes) {
-          console.log(`${colors.yellow}Warning: Proceeding anyway (--yes flag).${colors.reset}`);
-          validated = true;
-          break;
-        }
-
-        console.log(`\n${colors.yellow}How would you like to proceed?${colors.reset}`);
-        console.log(`  1. Re-enter API Key`);
-        console.log(`  2. Change Base URL`);
-        console.log(`  3. Skip validation & proceed anyway`);
-        console.log(`  4. Abort setup`);
-
-        const choice = await rl.question(`Select option [1-4, default: 1]: `);
-        if (choice === '2') {
-          const newUrl = await rl.question(`Enter new Base URL: `);
-          if (newUrl.trim()) {
-            baseUrl = newUrl.trim();
-            urls = normalizeUrls(baseUrl);
-          }
-        } else if (choice === '3') {
-          console.log(`${colors.yellow}Skipping validation...${colors.reset}`);
-          validated = true;
-        } else if (choice === '4') {
-          console.log(`Setup aborted.`);
-          process.exit(0);
-        } else {
-          const newKey = await rl.question(`Enter new GhostCLI API Key: `);
-          if (newKey.trim()) apiKey = newKey.trim();
-        }
+        apiKey = await tuiInput({
+          promptLabel: 'New GhostCLI API Key',
+          required: true,
+          emptyError: 'API Key cannot be empty.'
+        });
       }
     }
+  }
 
-    // Step 4: Detect Installed Harnesses & Select Targets
-    console.log(`\n${colors.bold}Step 4: AI Harness Detection${colors.reset}`);
-    const harnesses = detectHarnesses();
-    const detectedList = [];
+  // Step 4: Detect Installed Harnesses & Select Targets
+  const latestHarnesses = detectHarnesses();
+  const detectedList = Object.keys(latestHarnesses).filter(id => latestHarnesses[id].installed);
 
-    for (const [id, h] of Object.entries(harnesses)) {
+  let selectedTools = detectedList;
+  if (options.tools) {
+    selectedTools = options.tools.includes('all')
+      ? Object.keys(latestHarnesses)
+      : options.tools;
+  } else if (!options.yes) {
+    console.log('');
+    const harnessOptions = Object.entries(latestHarnesses).map(([id, h]) => {
+      const detail = h.bin || (h.configExists ? h.configPath : '');
+      const hint = h.installed
+        ? `${colors.green}(Detected${detail ? `: ${detail}` : ''})${colors.reset}`
+        : `${colors.dim}(Not detected)${colors.reset}`;
+      return {
+        value: id,
+        label: h.name.padEnd(28),
+        hint,
+        checked: h.installed,
+        detected: h.installed
+      };
+    });
+
+    selectedTools = await tuiMultiSelect({
+      title: 'Step 4: Select Target AI Harnesses',
+      subtitle: `${detectedList.length} harness(es) detected on this device and pre-selected.`,
+      options: harnessOptions
+    });
+  } else {
+    console.log(`\n${colors.bold}${colors.cyan}Step 4: AI Harness Detection${colors.reset}`);
+    for (const h of Object.values(latestHarnesses)) {
       const icon = h.installed ? `${colors.green}[✔]${colors.reset}` : `${colors.dim}[ ]${colors.reset}`;
       console.log(`  ${icon} ${colors.bold}${h.name.padEnd(28)}${colors.reset} ${h.installed ? colors.green + '(Installed)' : colors.dim + '(Not detected)'}${colors.reset}`);
-      if (h.installed) detectedList.push(id);
     }
-
-    let selectedTools = detectedList;
-    if (options.tools) {
-      if (options.tools.includes('all')) {
-        selectedTools = Object.keys(harnesses);
-      } else {
-        selectedTools = options.tools;
-      }
-    } else if (!options.yes && detectedList.length > 0) {
-      console.log(`\n${colors.yellow}Select deployment target:${colors.reset}`);
-      console.log(`  1. All Detected Tools (${detectedList.join(', ')}) [Recommended]`);
-      console.log(`  2. All Supported Harnesses (including uninstalled)`);
-      console.log(`  3. Custom Selection`);
-
-      const tChoice = await rl.question(`Choose option [1-3, default: 1]: `);
-      if (tChoice === '2') {
-        selectedTools = Object.keys(harnesses);
-      } else if (tChoice === '3') {
-        const custom = await rl.question(`Enter tool ids separated by comma (claude, codex, hermes, openclaw, opencode, omp, vscode, desktop, opendesign): `);
-        selectedTools = custom.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-      }
-    }
-
-    // Step 5: Persistence Mode Selection
-    let mode = options.mode || 'both';
-    if (!options.yes) {
-      console.log(`\n${colors.bold}Step 5: Persistence Mode${colors.reset}`);
-      console.log(`  1. Both Tool Config Files & Persistent Environment Variables [Recommended]`);
-      console.log(`  2. Tool Configuration Files Only`);
-      console.log(`  3. Persistent Environment Variables Only`);
-      const mChoice = await rl.question(`Choose mode [1-3, default: 1]: `);
-      if (mChoice === '2') mode = 'config';
-      else if (mChoice === '3') mode = 'env';
-      else mode = 'both';
-    }
-
-    // Step 6: Execute Configuration
-    applyDeployment(selectedTools, harnesses, urls, apiKey, mode, options.dryRun);
-
-  } finally {
-    rl.close();
   }
+
+  // Step 5: Persistence Mode Selection
+  let mode = options.mode || 'both';
+  if (!options.yes) {
+    console.log('');
+    mode = await tuiSelect({
+      title: 'Step 5: Persistence Mode',
+      options: [
+        { value: 'both', label: 'Both Tool Config Files & Persistent Environment Variables', hint: 'Recommended' },
+        { value: 'config', label: 'Tool Configuration Files Only' },
+        { value: 'env', label: 'Persistent Environment Variables Only' }
+      ],
+      defaultIndex: 0
+    });
+  }
+
+  // Step 6: Execute Configuration
+  applyDeployment(selectedTools, latestHarnesses, urls, apiKey, mode, options.dryRun);
 }

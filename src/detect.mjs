@@ -34,14 +34,19 @@ export function getToolPaths() {
   return {
     claude: {
       config: path.join(userHome, '.claude', 'settings.json'),
-      dir: path.join(userHome, '.claude')
+      dir: path.join(userHome, '.claude'),
+      candidateBins: [
+        path.join(userHome, '.claude', 'local', 'claude'),
+        path.join(userHome, '.local', 'bin', 'claude')
+      ]
     },
     codex: {
       config: path.join(userHome, '.codex', 'config.toml'),
       dir: path.join(userHome, '.codex'),
       candidateBins: [
         path.join(localAppData, 'Programs', 'OpenAI', 'Codex', 'bin', 'codex.exe'),
-        path.join(userHome, '.codex', 'packages', 'standalone', 'current', 'bin', 'codex.exe')
+        path.join(userHome, '.codex', 'packages', 'standalone', 'current', 'bin', 'codex.exe'),
+        path.join(userHome, '.local', 'bin', 'codex')
       ]
     },
     hermes: {
@@ -53,24 +58,45 @@ export function getToolPaths() {
         : path.join(userHome, '.hermes'),
       candidateBins: [
         path.join(localAppData, 'hermes', 'bin', 'hermes.cmd'),
-        path.join(userHome, '.hermes', 'bin', 'hermes')
+        path.join(userHome, '.hermes', 'bin', 'hermes'),
+        path.join(userHome, '.local', 'bin', 'hermes')
       ]
     },
     openclaw: {
       config: path.join(userHome, '.openclaw', 'openclaw.json'),
-      dir: path.join(userHome, '.openclaw')
+      dir: path.join(userHome, '.openclaw'),
+      candidateBins: [
+        path.join(userHome, '.local', 'bin', 'openclaw')
+      ]
     },
-    opencode: {
-      config: isWin
-        ? path.join(appData, 'opencode', 'config.json')
-        : path.join(configHome, 'opencode', 'config.json'),
-      dir: isWin
+    opencode: (() => {
+      const dir = isWin
         ? path.join(appData, 'opencode')
-        : path.join(configHome, 'opencode')
-    },
+        : path.join(configHome, 'opencode');
+      const configCandidates = ['config.json', 'opencode.json', 'opencode.jsonc'];
+      let resolvedConfig = path.join(dir, 'config.json');
+      for (const name of configCandidates) {
+        const candidate = path.join(dir, name);
+        if (fs.existsSync(candidate)) {
+          resolvedConfig = candidate;
+          break;
+        }
+      }
+      return {
+        config: resolvedConfig,
+        dir,
+        candidateBins: [
+          path.join(userHome, '.opencode', 'bin', 'opencode'),
+          path.join(userHome, '.local', 'bin', 'opencode')
+        ]
+      };
+    })(),
     omp: {
       config: path.join(userHome, '.omp', 'config.json'),
-      dir: path.join(userHome, '.omp')
+      dir: path.join(userHome, '.omp'),
+      candidateBins: [
+        path.join(userHome, '.local', 'bin', 'omp')
+      ]
     },
     vscode: {
       config: isWin
@@ -297,12 +323,21 @@ export function inspectHarnessContext(id, configPath) {
   return { ok: false, detail: 'Unknown harness' };
 }
 
+function findToolBinary(cmd, candidateBins = []) {
+  const fromPath = checkBinary(cmd);
+  if (fromPath) return fromPath;
+  for (const b of candidateBins) {
+    if (fs.existsSync(b)) return b;
+  }
+  return null;
+}
+
 export function detectHarnesses() {
   const toolPaths = getToolPaths();
   const results = {};
 
   // 1. Claude Code
-  const claudeBin = checkBinary('claude');
+  const claudeBin = findToolBinary('claude', toolPaths.claude.candidateBins);
   const claudeConfigExists = fs.existsSync(toolPaths.claude.config);
   let claudeEndpoint = null;
   if (claudeConfigExists) {
@@ -314,7 +349,7 @@ export function detectHarnesses() {
   results.claude = {
     id: 'claude',
     name: 'Claude Code CLI',
-    installed: Boolean(claudeBin || claudeConfigExists || fs.existsSync(toolPaths.claude.dir)),
+    installed: Boolean(claudeBin || claudeConfigExists),
     bin: claudeBin,
     configPath: toolPaths.claude.config,
     configExists: claudeConfigExists,
@@ -322,12 +357,7 @@ export function detectHarnesses() {
   };
 
   // 2. OpenAI Codex CLI
-  let codexBin = checkBinary('codex');
-  if (!codexBin) {
-    for (const b of toolPaths.codex.candidateBins) {
-      if (fs.existsSync(b)) { codexBin = b; break; }
-    }
-  }
+  const codexBin = findToolBinary('codex', toolPaths.codex.candidateBins);
   const codexConfigExists = fs.existsSync(toolPaths.codex.config);
   let codexEndpoint = null;
   if (codexConfigExists) {
@@ -347,7 +377,7 @@ export function detectHarnesses() {
   results.codex = {
     id: 'codex',
     name: 'OpenAI Codex CLI',
-    installed: Boolean(codexBin || codexConfigExists || fs.existsSync(toolPaths.codex.dir)),
+    installed: Boolean(codexBin || codexConfigExists),
     bin: codexBin,
     configPath: toolPaths.codex.config,
     configExists: codexConfigExists,
@@ -355,12 +385,7 @@ export function detectHarnesses() {
   };
 
   // 3. Hermes Agent
-  let hermesBin = checkBinary('hermes');
-  if (!hermesBin) {
-    for (const b of toolPaths.hermes.candidateBins) {
-      if (fs.existsSync(b)) { hermesBin = b; break; }
-    }
-  }
+  const hermesBin = findToolBinary('hermes', toolPaths.hermes.candidateBins);
   const hermesConfigExists = fs.existsSync(toolPaths.hermes.config);
   let hermesEndpoint = null;
   if (hermesConfigExists) {
@@ -374,7 +399,7 @@ export function detectHarnesses() {
   results.hermes = {
     id: 'hermes',
     name: 'Hermes Agent (Nous Research)',
-    installed: Boolean(hermesBin || hermesConfigExists || fs.existsSync(toolPaths.hermes.dir)),
+    installed: Boolean(hermesBin || hermesConfigExists),
     bin: hermesBin,
     configPath: toolPaths.hermes.config,
     configExists: hermesConfigExists,
@@ -382,7 +407,7 @@ export function detectHarnesses() {
   };
 
   // 4. OpenClaw
-  const openclawBin = checkBinary('openclaw');
+  const openclawBin = findToolBinary('openclaw', toolPaths.openclaw.candidateBins);
   const openclawConfigExists = fs.existsSync(toolPaths.openclaw.config);
   let openclawEndpoint = null;
   if (openclawConfigExists) {
@@ -394,7 +419,7 @@ export function detectHarnesses() {
   results.openclaw = {
     id: 'openclaw',
     name: 'OpenClaw',
-    installed: Boolean(openclawBin || openclawConfigExists || fs.existsSync(toolPaths.openclaw.dir)),
+    installed: Boolean(openclawBin || openclawConfigExists),
     bin: openclawBin,
     configPath: toolPaths.openclaw.config,
     configExists: openclawConfigExists,
@@ -402,7 +427,7 @@ export function detectHarnesses() {
   };
 
   // 5. OpenCode
-  const opencodeBin = checkBinary('opencode');
+  const opencodeBin = findToolBinary('opencode', toolPaths.opencode.candidateBins);
   const opencodeConfigExists = fs.existsSync(toolPaths.opencode.config);
   let opencodeEndpoint = null;
   if (opencodeConfigExists) {
@@ -414,7 +439,7 @@ export function detectHarnesses() {
   results.opencode = {
     id: 'opencode',
     name: 'OpenCode Interpreter / CLI',
-    installed: Boolean(opencodeBin || opencodeConfigExists || fs.existsSync(toolPaths.opencode.dir)),
+    installed: Boolean(opencodeBin || opencodeConfigExists),
     bin: opencodeBin,
     configPath: toolPaths.opencode.config,
     configExists: opencodeConfigExists,
@@ -422,7 +447,7 @@ export function detectHarnesses() {
   };
 
   // 6. Oh My Pi (omp)
-  const ompBin = checkBinary('omp');
+  const ompBin = findToolBinary('omp', toolPaths.omp.candidateBins);
   const ompConfigExists = fs.existsSync(toolPaths.omp.config);
   let ompEndpoint = null;
   if (ompConfigExists) {
@@ -434,7 +459,7 @@ export function detectHarnesses() {
   results.omp = {
     id: 'omp',
     name: 'Oh My Pi (omp)',
-    installed: Boolean(ompBin || ompConfigExists || fs.existsSync(toolPaths.omp.dir)),
+    installed: Boolean(ompBin || ompConfigExists),
     bin: ompBin,
     configPath: toolPaths.omp.config,
     configExists: ompConfigExists,
@@ -442,12 +467,7 @@ export function detectHarnesses() {
   };
 
   // 7. Visual Studio Code
-  let vscodeBin = checkBinary('code');
-  if (!vscodeBin) {
-    for (const b of toolPaths.vscode.candidateBins) {
-      if (fs.existsSync(b)) { vscodeBin = b; break; }
-    }
-  }
+  const vscodeBin = findToolBinary('code', toolPaths.vscode.candidateBins);
   const vscodeConfigExists = fs.existsSync(toolPaths.vscode.config);
   let vscodeEndpoint = null;
   if (vscodeConfigExists) {
@@ -462,7 +482,7 @@ export function detectHarnesses() {
   results.vscode = {
     id: 'vscode',
     name: 'Visual Studio Code',
-    installed: Boolean(vscodeBin || vscodeConfigExists || fs.existsSync(toolPaths.vscode.dir)),
+    installed: Boolean(vscodeBin || vscodeConfigExists),
     bin: vscodeBin,
     configPath: toolPaths.vscode.config,
     configExists: vscodeConfigExists,
@@ -548,7 +568,7 @@ export function detectHarnesses() {
   results.opendesign = {
     id: 'opendesign',
     name: 'Open Design',
-    installed: Boolean(openDesignBin || openDesignConfigExists || fs.existsSync(toolPaths.opendesign.dir)),
+    installed: Boolean(openDesignBin || openDesignConfigExists),
     bin: openDesignBin,
     configPath: toolPaths.opendesign.config,
     configExists: openDesignConfigExists,

@@ -225,64 +225,50 @@ export function syncModelsToHeimdall(modelSpecs, dryRun = false, customHeimdallD
  */
 export function syncModelsToHarnesses(modelSpecs, harnesses, urls, apiKey, dryRun = false) {
   const results = [];
-
-  // 1. Codex CLI
-  if (harnesses.codex && harnesses.codex.configPath) {
-    try {
-      const res = configureCodex(harnesses.codex.configPath, urls, apiKey, dryRun, null, modelSpecs);
-      results.push({ tool: 'OpenAI Codex CLI', ok: true, path: res.catalog || res.path });
-    } catch (err) {
-      results.push({ tool: 'OpenAI Codex CLI', ok: false, error: err.message });
+  const targets = [
+    {
+      id: 'codex',
+      tool: 'OpenAI Codex CLI',
+      run: (h) => {
+        const res = configureCodex(h.configPath, urls, apiKey, dryRun, null, modelSpecs);
+        return res.catalog || res.path;
+      }
+    },
+    {
+      id: 'hermes',
+      tool: 'Hermes Agent',
+      run: (h) => configureHermes(h.configPath, urls, apiKey, dryRun, modelSpecs).path
+    },
+    {
+      id: 'opencode',
+      tool: 'OpenCode',
+      run: (h) => configureOpenCode(h.configPath, urls, apiKey, dryRun, modelSpecs).path
+    },
+    {
+      id: 'opendesign',
+      tool: 'Open Design',
+      run: (h) => configureOpenDesign(h.configPath, urls, apiKey, dryRun, {}, modelSpecs).path
+    },
+    {
+      id: 'claude',
+      tool: 'Claude Code',
+      run: (h) => configureClaude(h.configPath, urls, apiKey, dryRun, modelSpecs).path
+    },
+    {
+      id: 'desktop',
+      tool: 'Claude Desktop',
+      run: (h) => configureClaudeDesktop(h.configPath, urls, apiKey, dryRun, null, modelSpecs).path
     }
-  }
+  ];
 
-  // 2. Hermes Agent
-  if (harnesses.hermes && harnesses.hermes.configPath) {
+  for (const target of targets) {
+    const h = harnesses?.[target.id];
+    if (!h || !h.installed || !h.configPath) continue;
     try {
-      const res = configureHermes(harnesses.hermes.configPath, urls, apiKey, dryRun, modelSpecs);
-      results.push({ tool: 'Hermes Agent', ok: true, path: res.path });
+      const outPath = target.run(h);
+      results.push({ tool: target.tool, ok: true, path: outPath });
     } catch (err) {
-      results.push({ tool: 'Hermes Agent', ok: false, error: err.message });
-    }
-  }
-
-  // 3. OpenCode
-  if (harnesses.opencode && harnesses.opencode.configPath) {
-    try {
-      const res = configureOpenCode(harnesses.opencode.configPath, urls, apiKey, dryRun, modelSpecs);
-      results.push({ tool: 'OpenCode', ok: true, path: res.path });
-    } catch (err) {
-      results.push({ tool: 'OpenCode', ok: false, error: err.message });
-    }
-  }
-
-  // 4. Open Design
-  if (harnesses.opendesign && harnesses.opendesign.configPath) {
-    try {
-      const res = configureOpenDesign(harnesses.opendesign.configPath, urls, apiKey, dryRun, {}, modelSpecs);
-      results.push({ tool: 'Open Design', ok: true, path: res.path });
-    } catch (err) {
-      results.push({ tool: 'Open Design', ok: false, error: err.message });
-    }
-  }
-
-  // 5. Claude Code
-  if (harnesses.claude && harnesses.claude.configPath) {
-    try {
-      const res = configureClaude(harnesses.claude.configPath, urls, apiKey, dryRun, modelSpecs);
-      results.push({ tool: 'Claude Code', ok: true, path: res.path });
-    } catch (err) {
-      results.push({ tool: 'Claude Code', ok: false, error: err.message });
-    }
-  }
-
-  // 6. Claude Desktop
-  if (harnesses.desktop && harnesses.desktop.configPath) {
-    try {
-      const res = configureClaudeDesktop(harnesses.desktop.configPath, urls, apiKey, dryRun, null, modelSpecs);
-      results.push({ tool: 'Claude Desktop', ok: true, path: res.path });
-    } catch (err) {
-      results.push({ tool: 'Claude Desktop', ok: false, error: err.message });
+      results.push({ tool: target.tool, ok: false, error: err.message });
     }
   }
 

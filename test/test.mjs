@@ -612,14 +612,16 @@ console.log('\n[Test Suite 7: Dynamic Model Synchronization & Heimdall Integrati
   const claudeSyncFile = path.join(harnessSyncDir, 'claude-settings.json');
 
   const mockHarnesses = {
-    codex: { configPath: codexSyncFile },
-    hermes: { configPath: hermesSyncFile },
-    opencode: { configPath: openCodeSyncFile },
-    claude: { configPath: claudeSyncFile }
+    codex: { installed: true, configPath: codexSyncFile },
+    hermes: { installed: true, configPath: hermesSyncFile },
+    opencode: { installed: true, configPath: openCodeSyncFile },
+    claude: { installed: true, configPath: claudeSyncFile },
+    desktop: { installed: false, configPath: path.join(harnessSyncDir, 'desktop-should-not-exist.json') }
   };
 
   const syncResults = syncModelsToHarnesses(resolved, mockHarnesses, testUrls, testKey, false);
-  assert(syncResults.every(r => r.ok), 'syncModelsToHarnesses updates all harnesses successfully');
+  assert(syncResults.length === 4 && syncResults.every(r => r.ok), 'syncModelsToHarnesses updates only installed harnesses');
+  assert(!fs.existsSync(mockHarnesses.desktop.configPath), 'syncModelsToHarnesses skips uninstalled harnesses');
 
   // Verify Codex synced models
   const codexCatalogFile = path.join(harnessSyncDir, 'ghostcli-models.json');
